@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
-    langfuse_public_key: str
-    langfuse_secret_key: str
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
 
     rag_top_k: int = 5
