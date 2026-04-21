@@ -1,0 +1,4 @@
+{
+  "_note": "This file is the single source of truth for RAG taxonomy. Top-level keys are categories; values are arrays of concept tags. Run scripts/taxonomy_discovery.py over your corpus to generate a real version, then review and finalize before running scripts/ingest.py.",
+  "example_category": ["tag_one", "tag_two", "tag_three"]
+}
