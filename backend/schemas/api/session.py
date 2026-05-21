@@ -1,18 +1,22 @@
+import uuid
+
 from pydantic import BaseModel
 
+from backend.schemas.agents.analysis import PromptAnalysis
 from backend.schemas.agents.common import ClarifyingQuestion, UserAnswer
-from backend.schemas.agents.reformulation import ReformulatedQuery
-from backend.schemas.agents.synthesizer import RetrievedDocument
+from backend.schemas.agents.retrieval import RetrievedDocResult
 
 
 class SessionContext(BaseModel):
     """Stateless blob returned by /start and echoed in /respond body."""
     original_prompt: str
     questions: list[ClarifyingQuestion]
+    project_id: uuid.UUID
 
 
 class SessionStartRequest(BaseModel):
     original_prompt: str
+    project_id: uuid.UUID
 
 
 class SessionStartResponse(BaseModel):
@@ -27,7 +31,5 @@ class SessionRespondRequest(BaseModel):
 
 class SessionRespondResponse(BaseModel):
     original_prompt: str
-    revised_prompt: str
-    analysis: str
-    reformulated_query: ReformulatedQuery
-    retrieved_documents: list[RetrievedDocument]
+    analysis: PromptAnalysis
+    retrieved_documents: list[RetrievedDocResult]

@@ -21,12 +21,23 @@ _TAXONOMY: dict = json.loads(pathlib.Path("taxonomy.json").read_text())
 
 
 @router.post("/start", response_model=SessionStartResponse)
-async def session_start(body: SessionStartRequest) -> SessionStartResponse:
+async def session_start(
+    body: SessionStartRequest,
+    db: DbDep,
+    settings: SettingsDep,
+) -> SessionStartResponse:
     client = get_anthropic_client()
-    output = await run_start_pipeline(body.original_prompt, client)
+    output = await run_start_pipeline(
+        body.original_prompt,
+        body.project_id,
+        client,
+        db,
+        settings,
+    )
     ctx = SessionContext(
         original_prompt=body.original_prompt,
         questions=output.questions,
+        project_id=body.project_id,
     )
     return SessionStartResponse(session_context=ctx, questions=output.questions)
 

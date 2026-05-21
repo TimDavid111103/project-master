@@ -1,28 +1,39 @@
 """Pipeline orchestration for the session flow.
 
-Single responsibility: wire agents, embedder, and retriever in the correct order.
-No HTTP concerns, no direct DB queries.
+Single responsibility: wire agents, memory service, and retrieval in the correct order.
+No HTTP concerns, no direct DB queries beyond what is delegated to memory_service.
 """
+import uuid
+
 import anthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.agents import question_agent, reformulation_agent, synthesizer_agent
+from backend.agents import analysis_agent, clarifying_agent, retrieval_agent
 from backend.config import Settings
-from backend.rag.embedder import embed_text
-from backend.rag.retriever import retrieve
-from backend.schemas.agents.question import QuestionAgentInput, QuestionAgentOutput
-from backend.schemas.agents.reformulation import ReformulationAgentInput
-from backend.schemas.agents.synthesizer import SynthesizerAgentInput
+from backend.schemas.agents.analysis import AnalysisAgentInput
+from backend.schemas.agents.clarifying import ClarifyingAgentInput, ClarifyingAgentOutput
 from backend.schemas.agents.common import UserAnswer
+from backend.schemas.agents.retrieval import QAPair, RetrievalAgentInput
 from backend.schemas.api.session import SessionContext, SessionRespondResponse
+from backend.services import memory_service
 
 
 async def run_start_pipeline(
     original_prompt: str,
+    project_id: uuid.UUID,
     client: anthropic.AsyncAnthropic,
-) -> QuestionAgentOutput:
-    return await question_agent.run(
-        client, QuestionAgentInput(original_prompt=original_prompt)
+    db: AsyncSession,
+    settings: Settings,
+) -> ClarifyingAgentOutput:
+    memory = await memory_service.load_memory(db, project_id, original_prompt, settings)
+    await memory_service.store_raw_prompt(db, project_id, original_prompt, settings)
+    return await clarifying_agent.run(
+        client,
+        ClarifyingAgentInput(
+            original_prompt=original_prompt,
+            project_summary=memory.project_summary,
+            previous_questions=memory.previous_questions,
+        ),
     )
 
 
@@ -34,34 +45,47 @@ async def run_respond_pipeline(
     settings: Settings,
     taxonomy: dict,
 ) -> SessionRespondResponse:
-    reform_output = await reformulation_agent.run(
+    project_id = context.project_id
+    memory = await memory_service.load_memory(
+        db, project_id, context.original_prompt, settings
+    )
+
+    qa_pairs = [
+        QAPair(question_text=q.question_text, answer_text=a.answer_text)
+        for q, a in zip(context.questions, answers)
+    ]
+
+    retrieval_output = await retrieval_agent.run(
         client,
-        ReformulationAgentInput(
+        RetrievalAgentInput(
             original_prompt=context.original_prompt,
-            questions=context.questions,
-            answers=answers,
+            qa_pairs=qa_pairs,
+            project_summary=memory.project_summary,
             taxonomy=taxonomy,
         ),
+        db,
+        settings,
     )
-    rq = reform_output.reformulated_query
 
-    query_embedding = await embed_text(rq.query_text, settings)
-    docs = await retrieve(db, rq, query_embedding, top_k=settings.rag_top_k)
+    await memory_service.store_qa_pairs(db, project_id, qa_pairs, settings)
 
-    synth_output = await synthesizer_agent.run(
+    analysis_output = await analysis_agent.run(
         client,
-        SynthesizerAgentInput(
+        AnalysisAgentInput(
             original_prompt=context.original_prompt,
-            reformulated_query=rq,
-            retrieved_documents=docs,
-            answers=answers,
+            qa_pairs=qa_pairs,
+            retrieved_documents=retrieval_output.retrieved_docs,
+            project_summary=memory.project_summary,
+            past_analyses=memory.past_analyses,
         ),
+    )
+
+    await memory_service.store_analysis(
+        db, project_id, context.original_prompt, analysis_output.analysis, settings
     )
 
     return SessionRespondResponse(
         original_prompt=context.original_prompt,
-        revised_prompt=synth_output.revised_prompt,
-        analysis=synth_output.analysis,
-        reformulated_query=rq,
-        retrieved_documents=docs,
+        analysis=analysis_output.analysis,
+        retrieved_documents=retrieval_output.retrieved_docs,
     )

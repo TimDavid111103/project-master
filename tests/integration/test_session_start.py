@@ -1,42 +1,39 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.schemas.agents.clarifying import ClarifyingAgentOutput
+from backend.schemas.agents.common import ClarifyingQuestion
+
+_PROJECT_ID = str(uuid.uuid4())
+
 
 @pytest.mark.asyncio
 async def test_session_start_returns_questions(api_client):
-    mock_output = {
-        "questions": [
-            {
-                "question_id": "q1",
-                "question_text": "What is the primary goal?",
-                "rationale": "Surfaces intent",
-            }
-        ]
-    }
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
-    tool_block.input = mock_output
-    mock_response = MagicMock(content=[tool_block])
-
-    with patch(
-        "backend.agents.question_agent._call_claude",
-        new=AsyncMock(
-            return_value=MagicMock(
-                questions=[
-                    MagicMock(
-                        question_id="q1",
-                        question_text="What is the primary goal?",
-                        rationale="Surfaces intent",
-                        model_dump=lambda: mock_output["questions"][0],
-                    )
-                ]
+    mock_output = ClarifyingAgentOutput(
+        questions=[
+            ClarifyingQuestion(
+                question_id="q1",
+                question_text="What is the primary goal of this prompt?",
+                rationale="Surfaces core intent",
             )
+        ]
+    )
+
+    with (
+        patch(
+            "backend.api.v1.endpoints.session.run_start_pipeline",
+            new=AsyncMock(return_value=mock_output),
         ),
-    ), patch("backend.agents.base.get_anthropic_client", return_value=AsyncMock()):
+        patch("backend.agents.base.get_anthropic_client", return_value=MagicMock()),
+    ):
         response = await api_client.post(
             "/api/v1/session/start",
-            json={"original_prompt": "How do I build a RAG pipeline?"},
+            json={
+                "original_prompt": "How do I build a RAG pipeline?",
+                "project_id": _PROJECT_ID,
+            },
         )
 
     assert response.status_code == 200
@@ -44,12 +41,15 @@ async def test_session_start_returns_questions(api_client):
     assert "session_context" in data
     assert "questions" in data
     assert data["session_context"]["original_prompt"] == "How do I build a RAG pipeline?"
+    assert data["session_context"]["project_id"] == _PROJECT_ID
+    assert len(data["questions"]) == 1
+    assert data["questions"][0]["question_id"] == "q1"
 
 
 @pytest.mark.asyncio
-async def test_session_start_returns_400_on_empty_prompt(api_client):
+async def test_session_start_missing_project_id_returns_422(api_client):
     response = await api_client.post(
         "/api/v1/session/start",
-        json={"original_prompt": ""},
+        json={"original_prompt": "How do I build a RAG pipeline?"},
     )
-    assert response.status_code in (200, 422)
+    assert response.status_code == 422

@@ -29,9 +29,18 @@ def make_tool_use_response(data: dict) -> MagicMock:
 @pytest_asyncio.fixture
 async def api_client():
     from httpx import ASGITransport, AsyncClient
+
+    from backend.dependencies import get_db
     from backend.main import app
+
+    async def _mock_get_db():
+        yield AsyncMock()
+
+    app.dependency_overrides[get_db] = _mock_get_db
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         yield client
+
+    app.dependency_overrides.clear()

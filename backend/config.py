@@ -23,6 +23,10 @@ class Settings(BaseSettings):
 
     chunk_size: int = 512
     chunk_overlap: int = 64
+    parent_chunk_size: int = 2048
+
+    memory_session_threshold: int = 10
+    memory_top_k: int = 5
 
 
 @lru_cache

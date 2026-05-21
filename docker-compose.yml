@@ -1,6 +1,6 @@
 services:
   db:
-    image: pgvector/pgvector:pg16
+    image: timescale/pgvectorscale-docker:pg16-latest
     container_name: prompt_master_db
     restart: unless-stopped
     environment:
