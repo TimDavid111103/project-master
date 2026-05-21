@@ -1,4 +1,6 @@
 import type {
+  CreateProjectRequest,
+  CreateProjectResponse,
   SessionRespondRequest,
   SessionRespondResponse,
   SessionStartRequest,
@@ -21,6 +23,9 @@ async function post<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
 }
 
 export const api = {
+  createProject: (body: CreateProjectRequest): Promise<CreateProjectResponse> =>
+    post("/api/v1/projects", body),
+
   sessionStart: (body: SessionStartRequest): Promise<SessionStartResponse> =>
     post("/api/v1/session/start", body),
 

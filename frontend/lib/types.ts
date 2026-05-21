@@ -12,10 +12,12 @@ export interface UserAnswer {
 export interface SessionContext {
   original_prompt: string;
   questions: ClarifyingQuestion[];
+  project_id: string;
 }
 
 export interface SessionStartRequest {
   original_prompt: string;
+  project_id: string;
 }
 
 export interface SessionStartResponse {
@@ -28,22 +30,39 @@ export interface SessionRespondRequest {
   answers: UserAnswer[];
 }
 
-export interface ReformulatedQuery {
-  category: string;
-  concept_tags: string[];
-  query_text: string;
+export interface DimensionGrade {
+  grade: "F" | "D" | "C" | "B" | "A" | "S";
+  explanation: string;
 }
 
-export interface RetrievedDocument {
+export interface PromptAnalysis {
+  intent_accuracy: DimensionGrade;
+  technical_language: DimensionGrade;
+  standards_alignment: DimensionGrade;
+}
+
+export interface RetrievedDocResult {
   doc_id: string;
   content: string;
   similarity_score: number;
+  chunk_level: string;
+  parent_id: string | null;
 }
 
 export interface SessionRespondResponse {
   original_prompt: string;
-  revised_prompt: string;
-  analysis: string;
-  reformulated_query: ReformulatedQuery;
-  retrieved_documents: RetrievedDocument[];
+  analysis: PromptAnalysis;
+  retrieved_documents: RetrievedDocResult[];
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  summary: string;
+}
+
+export interface CreateProjectResponse {
+  project_id: string;
+  name: string;
+  summary: string;
+  created_at: string;
 }

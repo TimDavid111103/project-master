@@ -33,11 +33,24 @@ const initialState: SessionState = {
 
 export function useSession() {
   const [state, setState] = useState<SessionState>(initialState);
+  // projectId persists across resets so successive sessions share the same project memory
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   async function submitPrompt(prompt: string): Promise<void> {
     setState((s) => ({ ...s, isLoading: true, error: null, originalPrompt: prompt }));
     try {
-      const data = await api.sessionStart({ original_prompt: prompt });
+      // Create the project on first submission; reuse on subsequent sessions
+      let pid = projectId;
+      if (!pid) {
+        const proj = await api.createProject({
+          name: "My Project",
+          summary: "A project for analyzing and improving AI system prompts.",
+        });
+        pid = proj.project_id;
+        setProjectId(pid);
+      }
+
+      const data = await api.sessionStart({ original_prompt: prompt, project_id: pid });
       setState((s) => ({
         ...s,
         isLoading: false,
@@ -74,6 +87,7 @@ export function useSession() {
 
   function reset(): void {
     setState(initialState);
+    // projectId intentionally kept so the next session contributes to the same project memory
   }
 
   return { ...state, submitPrompt, submitAnswers, reset };
