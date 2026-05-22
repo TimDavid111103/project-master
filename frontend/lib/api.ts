@@ -1,6 +1,11 @@
 import type {
   CreateProjectRequest,
   CreateProjectResponse,
+  ProjectHistoryResponse,
+  ProjectListItem,
+  ProjectSetupRespondRequest,
+  ProjectSetupRespondResponse,
+  ProjectSetupStartResponse,
   SessionRespondRequest,
   SessionRespondResponse,
   SessionStartRequest,
@@ -9,11 +14,13 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function post<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
+async function request<TRes>(
+  path: string,
+  options: RequestInit = {}
+): Promise<TRes> {
   const response = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    ...options,
   });
   if (!response.ok) {
     const text = await response.text();
@@ -22,13 +29,44 @@ async function post<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
   return response.json() as Promise<TRes>;
 }
 
+function post<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
+  return request<TRes>(path, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+function get<TRes>(path: string): Promise<TRes> {
+  return request<TRes>(path, { method: "GET" });
+}
+
 export const api = {
+  // Projects
+  listProjects: (): Promise<ProjectListItem[]> =>
+    get("/api/v1/projects"),
+
   createProject: (body: CreateProjectRequest): Promise<CreateProjectResponse> =>
     post("/api/v1/projects", body),
 
+  projectHistory: (projectId: string): Promise<ProjectHistoryResponse> =>
+    get(`/api/v1/projects/${projectId}/history`),
+
+  // Project setup
+  setupStart: (projectId: string): Promise<ProjectSetupStartResponse> =>
+    post(`/api/v1/projects/${projectId}/setup/start`, {}),
+
+  setupRespond: (
+    projectId: string,
+    body: ProjectSetupRespondRequest
+  ): Promise<ProjectSetupRespondResponse> =>
+    post(`/api/v1/projects/${projectId}/setup/respond`, body),
+
+  // Prompt session
   sessionStart: (body: SessionStartRequest): Promise<SessionStartResponse> =>
     post("/api/v1/session/start", body),
 
-  sessionRespond: (body: SessionRespondRequest): Promise<SessionRespondResponse> =>
+  sessionRespond: (
+    body: SessionRespondRequest
+  ): Promise<SessionRespondResponse> =>
     post("/api/v1/session/respond", body),
 };

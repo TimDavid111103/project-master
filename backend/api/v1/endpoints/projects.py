@@ -1,16 +1,24 @@
 """Project management and project setup endpoints."""
-from fastapi import APIRouter
+import json
+import uuid as _uuid
+
+from fastapi import APIRouter, HTTPException
+from sqlalchemy import select
 
 from backend.agents.base import get_anthropic_client
-from backend.db.models import Project
+from backend.db.models import Project, PromptAnalysisRecord
 from backend.dependencies import DbDep
+from backend.schemas.agents.analysis import IntentTranslation
 from backend.schemas.api.projects import (
     CreateProjectRequest,
     CreateProjectResponse,
+    ProjectHistoryResponse,
+    ProjectListItem,
     ProjectSetupRespondRequest,
     ProjectSetupRespondResponse,
     ProjectSetupStartResponse,
     ProjectSetupContext,
+    PromptSessionRecord,
 )
 from backend.services.session_service import (
     run_setup_respond_pipeline,
@@ -77,4 +85,59 @@ async def project_setup_respond(
         answers=body.answers,
         client=client,
         db=db,
+    )
+
+
+@router.get("", response_model=list[ProjectListItem])
+async def list_projects(db: DbDep) -> list[ProjectListItem]:
+    result = await db.execute(select(Project).order_by(Project.created_at.desc()))
+    projects = result.scalars().all()
+    return [
+        ProjectListItem(
+            project_id=p.id,
+            name=p.name,
+            rough_idea=p.rough_idea,
+            definition=p.definition,
+            created_at=p.created_at,
+        )
+        for p in projects
+    ]
+
+
+@router.get("/{project_id}/history", response_model=ProjectHistoryResponse)
+async def project_history(project_id: str, db: DbDep) -> ProjectHistoryResponse:
+    pid = _uuid.UUID(project_id)
+    result = await db.execute(select(Project).where(Project.id == pid))
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    analyses_result = await db.execute(
+        select(PromptAnalysisRecord)
+        .where(PromptAnalysisRecord.project_id == pid)
+        .order_by(PromptAnalysisRecord.created_at.desc())
+    )
+    analyses = analyses_result.scalars().all()
+
+    sessions = [
+        PromptSessionRecord(
+            session_id=a.id,
+            original_prompt=a.original_prompt,
+            intent_translation=IntentTranslation(
+                what_the_prompt_instructs=a.what_the_prompt_instructs,
+                assumptions_made=json.loads(a.assumptions_made),
+                potential_gaps=json.loads(a.potential_gaps),
+            ),
+            created_at=a.created_at,
+        )
+        for a in analyses
+    ]
+
+    return ProjectHistoryResponse(
+        project_id=project.id,
+        name=project.name,
+        rough_idea=project.rough_idea,
+        definition=project.definition,
+        created_at=project.created_at,
+        sessions=sessions,
     )

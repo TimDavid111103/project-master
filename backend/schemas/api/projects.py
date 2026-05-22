@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from backend.schemas.agents.common import ClarifyingQuestion, UserAnswer
+from backend.schemas.agents.analysis import IntentTranslation
 
 
 class CreateProjectRequest(BaseModel):
@@ -16,6 +17,30 @@ class CreateProjectResponse(BaseModel):
     name: str
     rough_idea: str
     created_at: datetime
+
+
+class ProjectListItem(BaseModel):
+    project_id: uuid.UUID
+    name: str
+    rough_idea: str
+    definition: str | None
+    created_at: datetime
+
+
+class PromptSessionRecord(BaseModel):
+    session_id: uuid.UUID
+    original_prompt: str
+    intent_translation: IntentTranslation
+    created_at: datetime
+
+
+class ProjectHistoryResponse(BaseModel):
+    project_id: uuid.UUID
+    name: str
+    rough_idea: str
+    definition: str | None
+    created_at: datetime
+    sessions: list[PromptSessionRecord]
 
 
 class ProjectSetupContext(BaseModel):

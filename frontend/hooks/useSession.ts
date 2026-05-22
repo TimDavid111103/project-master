@@ -9,10 +9,10 @@ import type {
   UserAnswer,
 } from "@/lib/types";
 
-export type View = "project" | "input" | "qa" | "results";
+export type SessionView = "input" | "qa" | "results";
 
 interface SessionState {
-  view: View;
+  view: SessionView;
   originalPrompt: string;
   sessionContext: SessionContext | null;
   questions: ClarifyingQuestion[];
@@ -21,7 +21,7 @@ interface SessionState {
   error: string | null;
 }
 
-const resetState: SessionState = {
+const initialState: SessionState = {
   view: "input",
   originalPrompt: "",
   sessionContext: null,
@@ -31,28 +31,10 @@ const resetState: SessionState = {
   error: null,
 };
 
-export function useSession() {
-  const [state, setState] = useState<SessionState>({ ...resetState, view: "project" });
-  // projectId persists across resets so successive sessions share the same project memory
-  const [projectId, setProjectId] = useState<string | null>(null);
-
-  async function createProject(name: string, summary: string): Promise<void> {
-    setState((s) => ({ ...s, isLoading: true, error: null }));
-    try {
-      const proj = await api.createProject({ name, summary: summary || `Project: ${name}` });
-      setProjectId(proj.project_id);
-      setState((s) => ({ ...s, isLoading: false, view: "input" }));
-    } catch (err) {
-      setState((s) => ({
-        ...s,
-        isLoading: false,
-        error: err instanceof Error ? err.message : "Something went wrong.",
-      }));
-    }
-  }
+export function useSession(projectId: string) {
+  const [state, setState] = useState<SessionState>(initialState);
 
   async function submitPrompt(prompt: string): Promise<void> {
-    if (!projectId) return;
     setState((s) => ({ ...s, isLoading: true, error: null, originalPrompt: prompt }));
     try {
       const data = await api.sessionStart({ original_prompt: prompt, project_id: projectId });
@@ -91,9 +73,8 @@ export function useSession() {
   }
 
   function reset(): void {
-    // Return to prompt input — project persists so memory accumulates across sessions
-    setState(resetState);
+    setState(initialState);
   }
 
-  return { ...state, createProject, submitPrompt, submitAnswers, reset };
+  return { ...state, submitPrompt, submitAnswers, reset };
 }
