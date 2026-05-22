@@ -1,4 +1,4 @@
-"""v2: memory storage tables, hierarchical chunking columns, diskann indexes
+"""v2: memory storage tables, hierarchical chunking columns, hnsw indexes
 
 Revision ID: 0002
 Revises: 0001
@@ -18,9 +18,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # pgvectorscale extension (CASCADE also installs pgvector if absent)
-    op.execute("CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE")
-
     # -------------------------------------------------------------------------
     # projects
     # -------------------------------------------------------------------------
@@ -59,6 +56,11 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE raw_prompts ADD COLUMN embedding vector(1536)")
     op.create_index("ix_raw_prompts_project_id", "raw_prompts", ["project_id"])
+    op.execute(
+        "CREATE INDEX ix_raw_prompts_embedding_hnsw "
+        "ON raw_prompts USING hnsw (embedding vector_cosine_ops) "
+        "WHERE embedding IS NOT NULL"
+    )
 
     # -------------------------------------------------------------------------
     # qa_pairs
@@ -83,6 +85,11 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE qa_pairs ADD COLUMN embedding vector(1536)")
     op.create_index("ix_qa_pairs_project_id", "qa_pairs", ["project_id"])
+    op.execute(
+        "CREATE INDEX ix_qa_pairs_embedding_hnsw "
+        "ON qa_pairs USING hnsw (embedding vector_cosine_ops) "
+        "WHERE embedding IS NOT NULL"
+    )
 
     # -------------------------------------------------------------------------
     # prompt_analyses
@@ -114,6 +121,11 @@ def upgrade() -> None:
     op.create_index(
         "ix_prompt_analyses_project_id", "prompt_analyses", ["project_id"]
     )
+    op.execute(
+        "CREATE INDEX ix_prompt_analyses_embedding_hnsw "
+        "ON prompt_analyses USING hnsw (embedding vector_cosine_ops) "
+        "WHERE embedding IS NOT NULL"
+    )
 
     # -------------------------------------------------------------------------
     # documents: add hierarchical chunking columns
@@ -142,37 +154,20 @@ def upgrade() -> None:
     )
     op.create_index("ix_documents_parent_id", "documents", ["parent_id"])
 
-    # -------------------------------------------------------------------------
-    # DiskANN indexes (replace HNSW on documents; add to memory tables)
-    # -------------------------------------------------------------------------
+    # Rebuild the documents embedding index with the same HNSW parameters as 0001
     op.execute("DROP INDEX IF EXISTS ix_documents_embedding_hnsw")
-
     op.execute(
-        "CREATE INDEX ix_documents_embedding_diskann "
-        "ON documents USING diskann (embedding vector_cosine_ops)"
-    )
-    op.execute(
-        "CREATE INDEX ix_raw_prompts_embedding_diskann "
-        "ON raw_prompts USING diskann (embedding vector_cosine_ops) "
-        "WHERE embedding IS NOT NULL"
-    )
-    op.execute(
-        "CREATE INDEX ix_qa_pairs_embedding_diskann "
-        "ON qa_pairs USING diskann (embedding vector_cosine_ops) "
-        "WHERE embedding IS NOT NULL"
-    )
-    op.execute(
-        "CREATE INDEX ix_prompt_analyses_embedding_diskann "
-        "ON prompt_analyses USING diskann (embedding vector_cosine_ops) "
-        "WHERE embedding IS NOT NULL"
+        "CREATE INDEX ix_documents_embedding_hnsw "
+        "ON documents USING hnsw (embedding vector_cosine_ops) "
+        "WITH (m = 16, ef_construction = 64)"
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS ix_prompt_analyses_embedding_diskann")
-    op.execute("DROP INDEX IF EXISTS ix_qa_pairs_embedding_diskann")
-    op.execute("DROP INDEX IF EXISTS ix_raw_prompts_embedding_diskann")
-    op.execute("DROP INDEX IF EXISTS ix_documents_embedding_diskann")
+    op.execute("DROP INDEX IF EXISTS ix_prompt_analyses_embedding_hnsw")
+    op.execute("DROP INDEX IF EXISTS ix_qa_pairs_embedding_hnsw")
+    op.execute("DROP INDEX IF EXISTS ix_raw_prompts_embedding_hnsw")
+    op.execute("DROP INDEX IF EXISTS ix_documents_embedding_hnsw")
 
     op.execute(
         """

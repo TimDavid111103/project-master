@@ -65,7 +65,7 @@ prompt-master/
 │   ├── 0001_initial.py               # Enables pgvector, creates documents table with HNSW index
 │   └── 0002_v2_schema.py             # Adds memory tables, hierarchical chunking columns, switches to DiskANN
 ├── taxonomy.json                     # Single source of truth for all RAG categories and concept tags
-├── docker-compose.yml                # Runs the pgvectorscale database only (backend runs locally)
+├── docker-compose.yml                # Runs the pgvector database only (backend runs locally)
 └── pyproject.toml                    # Python project config and dependencies
 ```
 
@@ -97,9 +97,9 @@ Documents are parsed using Docling, which preserves headings, tables, code block
 
 Embeddings are produced by OpenAI (`text-embedding-3-small`) while all generation calls go to Anthropic Claude (`claude-sonnet-4-6`). The two are kept completely separate — the embedder has no dependency on the agent code and vice versa. Embeddings are used in three places: the knowledge base vector store, the memory similarity retrieval above the session threshold, and the context summary retrieval within the ingest pipeline. All three use the same embedder function so the embedding space is consistent.
 
-### pgvectorscale DiskANN for vector search
+### pgvector HNSW for vector search
 
-The vector index uses pgvectorscale's DiskANN implementation rather than pgvector's HNSW. DiskANN is a streaming disk-based approximate nearest-neighbour algorithm that scales to large datasets without holding the full index in memory. The `docker-compose.yml` runs the `timescale/pgvectorscale-docker` image which includes both the `vector` and `vectorscale` PostgreSQL extensions. DiskANN indexes are created on the `documents.embedding` column and on the nullable `embedding` columns of all three memory tables, with a `WHERE embedding IS NOT NULL` predicate to exclude unembedded rows.
+All vector indexes use pgvector's HNSW implementation. HNSW (Hierarchical Navigable Small World) provides fast approximate nearest-neighbour search with configurable precision (`m = 16`, `ef_construction = 64`). The `docker-compose.yml` runs the `pgvector/pgvector:pg16` image. HNSW indexes are created on the `documents.embedding` column and on the nullable `embedding` columns of all three memory tables, with a `WHERE embedding IS NOT NULL` predicate to exclude unembedded rows.
 
 ### Observability via Langfuse
 
