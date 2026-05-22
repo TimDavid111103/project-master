@@ -1,77 +1,73 @@
 import anthropic
-from langfuse import observe
 
 from backend.config import get_settings
-from backend.schemas.agents.analysis import AnalysisAgentInput, AnalysisAgentOutput
+from backend.schemas.agents.analysis import (
+    IntentTranslationAgentInput,
+    IntentTranslationAgentOutput,
+)
 
 SYSTEM_PROMPT = """\
-You are an expert prompt engineer evaluating an AI system prompt against three dimensions.
+You are an AI behaviour analyst. Your job is to read an AI system prompt and describe \
+plainly what it is actually instructing the AI to do — not what the author intended, \
+but what the text literally instructs.
 
 You have access to:
-1. The original prompt written by the user
-2. Clarifying Q&A that reveals the user's true intent
-3. Retrieved technical reference knowledge
-4. Past analyses for this project (for trend awareness)
+1. The prompt itself
+2. Q&A where the user describes what they believe the prompt does
+3. Retrieved reference knowledge about AI engineering patterns
+4. Past translations for this project (for continuity)
 
-Grade the prompt on each dimension using this scale:
-  F = fundamentally broken or missing
-  D = major issues that undermine the goal
-  C = below standard, significant gaps
-  B = solid but with notable weaknesses
-  A = excellent, minor issues only
-  S = outstanding — a model example
+Produce an IntentTranslation with three fields:
 
-Dimensions:
-- intent_accuracy: How well does the prompt reflect the user's actual intent as revealed by the Q&A?
-  The Q&A answers are ground truth. Grade on how closely the prompt matches what the user said they wanted.
+what_the_prompt_instructs
+  One or two sentences. State precisely what behaviour the prompt produces in an AI model. \
+  Be literal. If the prompt is ambiguous, describe the most likely interpretation.
 
-- technical_language: Is technical terminology used appropriately for the task's complexity?
-  Too much jargon for a simple task is penalized. Too little for a complex task is also penalized.
-  Incorrect use of technical terms is penalized most heavily.
+assumptions_made
+  A list of implicit assumptions baked into the prompt that are not stated explicitly. \
+  These are things the prompt takes for granted — about the user, the context, the model, \
+  the output format, etc.
 
-- standards_alignment: Does the prompt follow professional standards for AI engineering?
-  Would following this prompt produce production-quality results?
-  Grade on how well it matches what an experienced engineer would write.
-
-Rules:
-- Explanations must be specific and reference the actual prompt content.
-- Name technical concepts correctly. Do not use vague language.
-- Explanations must be actionable — tell the user exactly what to change and why.
-- Do not rewrite the prompt. Analysis only.\
+potential_gaps
+  A list of things the user likely wanted (based on the Q&A) that the prompt does not \
+  address or under-specifies. Be concrete — name what is missing and why it matters.\
 """
 
 
-@observe(name="analysis-agent-llm-call", as_type="generation")
 async def _call_claude(
     client: anthropic.AsyncAnthropic,
-    input_: AnalysisAgentInput,
-) -> AnalysisAgentOutput:
+    input_: IntentTranslationAgentInput,
+) -> IntentTranslationAgentOutput:
     settings = get_settings()
 
     rag_context = "\n\n---\n\n".join(
         f"[Reference {i + 1}]\n{doc.content}"
         for i, doc in enumerate(input_.retrieved_documents)
-    )
+    ) or "(no reference documents retrieved)"
+
     qa_text = "\n".join(
         f"Q: {pair.question_text}\nA: {pair.answer_text}" for pair in input_.qa_pairs
     )
     past_context = (
-        "\n\n".join(f"[Past analysis {i + 1}]\n{a}" for i, a in enumerate(input_.past_analyses))
-        if input_.past_analyses
-        else "(no prior analyses for this project)"
+        "\n\n".join(
+            f"[Past translation {i + 1}]\n{t}"
+            for i, t in enumerate(input_.past_translations)
+        )
+        if input_.past_translations
+        else "(no prior translations for this project)"
     )
     project_context = (
-        f"Project context: {input_.project_summary}\n\n"
-        if input_.project_summary
+        f"Project context: {input_.project_definition}\n\n"
+        if input_.project_definition
         else ""
     )
 
     user_content = (
         f"{project_context}"
-        f"Prompt to analyze:\n{input_.original_prompt}\n\n"
-        f"User's clarifications (ground truth for intent):\n{qa_text}\n\n"
+        f"Prompt to translate:\n{input_.original_prompt}\n\n"
+        f"User's description of what the prompt does (Q&A):\n{qa_text}\n\n"
         f"Retrieved reference knowledge:\n{rag_context}\n\n"
-        f"Past analyses for this project:\n{past_context}"
+        f"Past translations for this project:\n{past_context}"
     )
 
     response = await client.messages.create(
@@ -81,19 +77,18 @@ async def _call_claude(
         messages=[{"role": "user", "content": user_content}],
         tools=[
             {
-                "name": "output_analysis",
-                "description": "Output the structured prompt analysis with grades and explanations.",
-                "input_schema": AnalysisAgentOutput.model_json_schema(),
+                "name": "output_translation",
+                "description": "Output the intent translation.",
+                "input_schema": IntentTranslationAgentOutput.model_json_schema(),
             }
         ],
-        tool_choice={"type": "tool", "name": "output_analysis"},
+        tool_choice={"type": "tool", "name": "output_translation"},
     )
     tool_block = next(b for b in response.content if b.type == "tool_use")
-    return AnalysisAgentOutput.model_validate(tool_block.input)
+    return IntentTranslationAgentOutput.model_validate(tool_block.input)
 
 
-@observe(name="analysis-agent")
 async def run(
-    client: anthropic.AsyncAnthropic, input_: AnalysisAgentInput
-) -> AnalysisAgentOutput:
+    client: anthropic.AsyncAnthropic, input_: IntentTranslationAgentInput
+) -> IntentTranslationAgentOutput:
     return await _call_claude(client, input_)

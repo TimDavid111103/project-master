@@ -22,6 +22,6 @@ class RetrievalAgentInput(BaseModel):
 
 
 class RetrievalAgentOutput(BaseModel):
-    retrieved_docs: list[RetrievedDocResult]
-    category: str
-    concept_tags: list[str]
+    retrieved_docs: list[RetrievedDocResult] = []
+    category: str = ""
+    concept_tags: list[str] = []

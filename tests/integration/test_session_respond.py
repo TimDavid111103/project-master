@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.schemas.agents.analysis import DimensionGrade, PromptAnalysis
+from backend.schemas.agents.analysis import IntentTranslation
 from backend.schemas.agents.retrieval import RetrievedDocResult
 from backend.schemas.api.session import SessionRespondResponse
 
@@ -25,22 +25,13 @@ _ANSWERS = [{"question_id": "q1", "answer_text": "PDFs and markdown files"}]
 
 
 @pytest.mark.asyncio
-async def test_session_respond_returns_prompt_analysis(api_client):
+async def test_session_respond_returns_intent_translation(api_client):
     mock_response = SessionRespondResponse(
         original_prompt="How do I chunk documents for RAG?",
-        analysis=PromptAnalysis(
-            intent_accuracy=DimensionGrade(
-                grade="B",
-                explanation="Prompt mostly reflects the intent revealed in Q&A.",
-            ),
-            technical_language=DimensionGrade(
-                grade="A",
-                explanation="Technical depth is appropriate for the task complexity.",
-            ),
-            standards_alignment=DimensionGrade(
-                grade="B",
-                explanation="Follows most conventions for RAG engineering prompts.",
-            ),
+        intent_translation=IntentTranslation(
+            what_the_prompt_instructs="The prompt instructs the AI to explain document chunking strategies for retrieval-augmented generation.",
+            assumptions_made=["The user is familiar with RAG pipelines", "The output should be explanatory rather than executable code"],
+            potential_gaps=["No output format specified", "Document size constraints not mentioned"],
         ),
         retrieved_documents=[
             RetrievedDocResult(
@@ -68,15 +59,14 @@ async def test_session_respond_returns_prompt_analysis(api_client):
     assert response.status_code == 200
     data = response.json()
 
-    assert "analysis" in data
-    assert "intent_accuracy" in data["analysis"]
-    assert "technical_language" in data["analysis"]
-    assert "standards_alignment" in data["analysis"]
-    assert data["analysis"]["intent_accuracy"]["grade"] == "B"
-    assert data["analysis"]["intent_accuracy"]["explanation"] != ""
-    assert "revised_prompt" not in data
+    assert "intent_translation" in data
+    assert "what_the_prompt_instructs" in data["intent_translation"]
+    assert "assumptions_made" in data["intent_translation"]
+    assert "potential_gaps" in data["intent_translation"]
+    assert isinstance(data["intent_translation"]["assumptions_made"], list)
+    assert isinstance(data["intent_translation"]["potential_gaps"], list)
+    assert "analysis" not in data
     assert data["original_prompt"] == "How do I chunk documents for RAG?"
-
     assert "retrieved_documents" in data
     assert data["retrieved_documents"][0]["doc_id"] == "abc123"
 

@@ -2,7 +2,7 @@ import uuid
 
 from pydantic import BaseModel
 
-from backend.schemas.agents.analysis import PromptAnalysis
+from backend.schemas.agents.analysis import IntentTranslation
 from backend.schemas.agents.common import ClarifyingQuestion, UserAnswer
 from backend.schemas.agents.retrieval import RetrievedDocResult
 
@@ -31,5 +31,5 @@ class SessionRespondRequest(BaseModel):
 
 class SessionRespondResponse(BaseModel):
     original_prompt: str
-    analysis: PromptAnalysis
+    intent_translation: IntentTranslation
     retrieved_documents: list[RetrievedDocResult]

@@ -18,7 +18,9 @@ class Project(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(256), nullable=False)
-    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    rough_idea: Mapped[str] = mapped_column(Text, nullable=False)
+    # Populated after the project setup Q&A completes; null until then
+    definition: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -73,12 +75,9 @@ class PromptAnalysisRecord(Base):
         nullable=False,
     )
     original_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    intent_accuracy_grade: Mapped[str] = mapped_column(String(1), nullable=False)
-    intent_accuracy_explanation: Mapped[str] = mapped_column(Text, nullable=False)
-    technical_language_grade: Mapped[str] = mapped_column(String(1), nullable=False)
-    technical_language_explanation: Mapped[str] = mapped_column(Text, nullable=False)
-    standards_alignment_grade: Mapped[str] = mapped_column(String(1), nullable=False)
-    standards_alignment_explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    what_the_prompt_instructs: Mapped[str] = mapped_column(Text, nullable=False)
+    assumptions_made: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
+    potential_gaps: Mapped[str] = mapped_column(Text, nullable=False)    # JSON array
     embedding: Mapped[list[float] | None] = mapped_column(VECTOR(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

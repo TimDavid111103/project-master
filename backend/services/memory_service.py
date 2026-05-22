@@ -1,6 +1,6 @@
 """Project memory: read and write per-project session history.
 
-Memory stores raw prompts, Q&A pairs, and structured analyses for each project.
+Memory stores raw prompts, Q&A pairs, and intent translations for each project.
 
 Context window strategy:
   - Below settings.memory_session_threshold entries: pass all memory directly.
@@ -10,6 +10,7 @@ Context window strategy:
 Note: previous_questions is ALWAYS fetched in full regardless of threshold,
 because it is a hard constraint for question deduplication — not context enrichment.
 """
+import json
 import uuid
 
 from sqlalchemy import func, select
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config import Settings
 from backend.db.models import Project, PromptAnalysisRecord, QAPairRecord, RawPrompt
 from backend.rag.embedder import embed_text
-from backend.schemas.agents.analysis import PromptAnalysis
+from backend.schemas.agents.analysis import IntentTranslation
 from backend.schemas.agents.retrieval import QAPair
 from backend.schemas.memory import ProjectMemory
 
@@ -39,7 +40,9 @@ async def _count_entries(db: AsyncSession, project_id: uuid.UUID) -> int:
     ).scalar_one()
     qa_count = (
         await db.execute(
-            select(func.count()).select_from(QAPairRecord).where(QAPairRecord.project_id == project_id)
+            select(func.count())
+            .select_from(QAPairRecord)
+            .where(QAPairRecord.project_id == project_id)
         )
     ).scalar_one()
     analysis_count = (
@@ -63,7 +66,20 @@ async def _all_previous_questions(db: AsyncSession, project_id: uuid.UUID) -> li
     return list(rows)
 
 
-async def _load_all_memory(db: AsyncSession, project_id: uuid.UUID, summary: str) -> ProjectMemory:
+def _serialize_translation(record: PromptAnalysisRecord) -> str:
+    assumptions = json.loads(record.assumptions_made)
+    gaps = json.loads(record.potential_gaps)
+    return (
+        f"Prompt: {record.original_prompt[:200]}\n"
+        f"What it instructs: {record.what_the_prompt_instructs}\n"
+        f"Assumptions: {'; '.join(assumptions)}\n"
+        f"Gaps: {'; '.join(gaps)}"
+    )
+
+
+async def _load_all_memory(
+    db: AsyncSession, project_id: uuid.UUID, definition: str | None
+) -> ProjectMemory:
     raw_rows = (
         await db.execute(
             select(RawPrompt.content)
@@ -88,16 +104,15 @@ async def _load_all_memory(db: AsyncSession, project_id: uuid.UUID, summary: str
         )
     ).scalars().all()
 
-    past_analyses = [
-        _serialize_analysis(r) for r in analysis_rows
-    ]
-
     return ProjectMemory(
         project_id=project_id,
-        project_summary=summary,
+        project_definition=definition,
         past_raw_prompts=list(raw_rows),
-        past_qa_pairs=[QAPair(question_text=r.question_text, answer_text=r.answer_text) for r in qa_rows],
-        past_analyses=past_analyses,
+        past_qa_pairs=[
+            QAPair(question_text=r.question_text, answer_text=r.answer_text)
+            for r in qa_rows
+        ],
+        past_translations=[_serialize_translation(r) for r in analysis_rows],
         previous_questions=[r.question_text for r in qa_rows],
     )
 
@@ -105,11 +120,10 @@ async def _load_all_memory(db: AsyncSession, project_id: uuid.UUID, summary: str
 async def _load_similar_memory(
     db: AsyncSession,
     project_id: uuid.UUID,
-    summary: str,
+    definition: str | None,
     query_embedding: list[float],
     top_k: int,
 ) -> ProjectMemory:
-    # Similarity search over each memory table; fall back to empty list if no embeddings exist
     raw_rows = (
         await db.execute(
             select(RawPrompt.content)
@@ -140,25 +154,18 @@ async def _load_similar_memory(
         )
     ).scalars().all()
 
-    # previous_questions always fetched in full (hard constraint for deduplication)
     all_questions = await _all_previous_questions(db, project_id)
 
     return ProjectMemory(
         project_id=project_id,
-        project_summary=summary,
+        project_definition=definition,
         past_raw_prompts=list(raw_rows),
-        past_qa_pairs=[QAPair(question_text=r.question_text, answer_text=r.answer_text) for r in qa_rows],
-        past_analyses=[_serialize_analysis(r) for r in analysis_rows],
+        past_qa_pairs=[
+            QAPair(question_text=r.question_text, answer_text=r.answer_text)
+            for r in qa_rows
+        ],
+        past_translations=[_serialize_translation(r) for r in analysis_rows],
         previous_questions=all_questions,
-    )
-
-
-def _serialize_analysis(record: PromptAnalysisRecord) -> str:
-    return (
-        f"Prompt: {record.original_prompt[:200]}\n"
-        f"intent_accuracy: {record.intent_accuracy_grade} — {record.intent_accuracy_explanation}\n"
-        f"technical_language: {record.technical_language_grade} — {record.technical_language_explanation}\n"
-        f"standards_alignment: {record.standards_alignment_grade} — {record.standards_alignment_explanation}"
     )
 
 
@@ -177,12 +184,22 @@ async def load_memory(
     total = await _count_entries(db, project_id)
 
     if total < settings.memory_session_threshold:
-        return await _load_all_memory(db, project_id, project.summary)
+        return await _load_all_memory(db, project_id, project.definition)
 
     query_embedding = await embed_text(current_prompt, settings)
     return await _load_similar_memory(
-        db, project_id, project.summary, query_embedding, settings.memory_top_k
+        db, project_id, project.definition, query_embedding, settings.memory_top_k
     )
+
+
+async def store_project_definition(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    definition: str,
+) -> None:
+    project = await _get_project(db, project_id)
+    project.definition = definition
+    await db.commit()
 
 
 async def store_raw_prompt(
@@ -216,25 +233,22 @@ async def store_qa_pairs(
     await db.commit()
 
 
-async def store_analysis(
+async def store_translation(
     db: AsyncSession,
     project_id: uuid.UUID,
     original_prompt: str,
-    analysis: PromptAnalysis,
+    translation: IntentTranslation,
     settings: Settings,
 ) -> None:
-    summary_text = f"{original_prompt} {analysis.model_dump_json()}"
+    summary_text = f"{original_prompt} {translation.model_dump_json()}"
     embedding = await embed_text(summary_text, settings)
     db.add(
         PromptAnalysisRecord(
             project_id=project_id,
             original_prompt=original_prompt,
-            intent_accuracy_grade=analysis.intent_accuracy.grade,
-            intent_accuracy_explanation=analysis.intent_accuracy.explanation,
-            technical_language_grade=analysis.technical_language.grade,
-            technical_language_explanation=analysis.technical_language.explanation,
-            standards_alignment_grade=analysis.standards_alignment.grade,
-            standards_alignment_explanation=analysis.standards_alignment.explanation,
+            what_the_prompt_instructs=translation.what_the_prompt_instructs,
+            assumptions_made=json.dumps(translation.assumptions_made),
+            potential_gaps=json.dumps(translation.potential_gaps),
             embedding=embedding,
         )
     )

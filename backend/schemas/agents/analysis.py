@@ -1,28 +1,21 @@
-from typing import Literal
-
 from pydantic import BaseModel
 
 from backend.schemas.agents.retrieval import QAPair, RetrievedDocResult
 
 
-class DimensionGrade(BaseModel):
-    grade: Literal["F", "D", "C", "B", "A", "S"]
-    explanation: str
+class IntentTranslation(BaseModel):
+    what_the_prompt_instructs: str
+    assumptions_made: list[str]
+    potential_gaps: list[str]
 
 
-class PromptAnalysis(BaseModel):
-    intent_accuracy: DimensionGrade
-    technical_language: DimensionGrade
-    standards_alignment: DimensionGrade
-
-
-class AnalysisAgentInput(BaseModel):
+class IntentTranslationAgentInput(BaseModel):
     original_prompt: str
     qa_pairs: list[QAPair]
     retrieved_documents: list[RetrievedDocResult]
-    project_summary: str | None
-    past_analyses: list[str]
+    project_definition: str | None
+    past_translations: list[str]
 
 
-class AnalysisAgentOutput(BaseModel):
-    analysis: PromptAnalysis
+class IntentTranslationAgentOutput(BaseModel):
+    intent_translation: IntentTranslation

@@ -9,7 +9,7 @@ import type {
   UserAnswer,
 } from "@/lib/types";
 
-export type View = "input" | "qa" | "results";
+export type View = "project" | "input" | "qa" | "results";
 
 interface SessionState {
   view: View;
@@ -21,7 +21,7 @@ interface SessionState {
   error: string | null;
 }
 
-const initialState: SessionState = {
+const resetState: SessionState = {
   view: "input",
   originalPrompt: "",
   sessionContext: null,
@@ -32,25 +32,30 @@ const initialState: SessionState = {
 };
 
 export function useSession() {
-  const [state, setState] = useState<SessionState>(initialState);
+  const [state, setState] = useState<SessionState>({ ...resetState, view: "project" });
   // projectId persists across resets so successive sessions share the same project memory
   const [projectId, setProjectId] = useState<string | null>(null);
 
+  async function createProject(name: string, summary: string): Promise<void> {
+    setState((s) => ({ ...s, isLoading: true, error: null }));
+    try {
+      const proj = await api.createProject({ name, summary: summary || `Project: ${name}` });
+      setProjectId(proj.project_id);
+      setState((s) => ({ ...s, isLoading: false, view: "input" }));
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        isLoading: false,
+        error: err instanceof Error ? err.message : "Something went wrong.",
+      }));
+    }
+  }
+
   async function submitPrompt(prompt: string): Promise<void> {
+    if (!projectId) return;
     setState((s) => ({ ...s, isLoading: true, error: null, originalPrompt: prompt }));
     try {
-      // Create the project on first submission; reuse on subsequent sessions
-      let pid = projectId;
-      if (!pid) {
-        const proj = await api.createProject({
-          name: "My Project",
-          summary: "A project for analyzing and improving AI system prompts.",
-        });
-        pid = proj.project_id;
-        setProjectId(pid);
-      }
-
-      const data = await api.sessionStart({ original_prompt: prompt, project_id: pid });
+      const data = await api.sessionStart({ original_prompt: prompt, project_id: projectId });
       setState((s) => ({
         ...s,
         isLoading: false,
@@ -86,9 +91,9 @@ export function useSession() {
   }
 
   function reset(): void {
-    setState(initialState);
-    // projectId intentionally kept so the next session contributes to the same project memory
+    // Return to prompt input — project persists so memory accumulates across sessions
+    setState(resetState);
   }
 
-  return { ...state, submitPrompt, submitAnswers, reset };
+  return { ...state, createProject, submitPrompt, submitAnswers, reset };
 }

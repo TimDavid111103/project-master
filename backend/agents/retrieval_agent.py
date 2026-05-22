@@ -7,7 +7,6 @@ All tool results are fed back in the same conversation so Claude can reason acro
 import json
 
 import anthropic
-from langfuse import observe
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +20,7 @@ from backend.schemas.agents.retrieval import (
     RetrievedDocResult,
 )
 
-MAX_ITERATIONS = 8
+MAX_ITERATIONS = 4
 
 _SYSTEM_PROMPT_TEMPLATE = """\
 You are a retrieval agent for a RAG system that analyzes AI engineering prompts.
@@ -72,8 +71,8 @@ class _ExpandQueryInput(BaseModel):
 
 class _CheckRelevanceInput(BaseModel):
     doc_id: str
-    is_relevant: bool
-    rationale: str
+    is_relevant: bool = True
+    rationale: str = ""
 
 
 class _ExpandQueryOutput(BaseModel):
@@ -159,17 +158,14 @@ async def _metadata_filtered_search(
     )
     query_embedding = await embed_text(inp.query_text, settings)
 
-    stmt = (
-        select(
-            Document,
-            Document.embedding.cosine_distance(query_embedding).label("distance"),
-        )
-        .where(Document.chunk_level == "chunk")
-        .where(Document.category == category)
-        .where(Document.concept_tags.contains(concept_tags))
-        .order_by("distance")
-        .limit(inp.top_k)
-    )
+    stmt = select(
+        Document,
+        Document.embedding.cosine_distance(query_embedding).label("distance"),
+    ).where(Document.chunk_level == "chunk").where(Document.category == category)
+    if concept_tags:
+        # Use the PostgreSQL && (overlap) operator — concept_tags is an ARRAY column
+        stmt = stmt.where(Document.concept_tags.op("&&")(concept_tags))
+    stmt = stmt.order_by("distance").limit(inp.top_k)
     rows = (await db.execute(stmt)).all()
     results = [
         RetrievedDocResult(
@@ -240,7 +236,7 @@ async def _expand_query(
     settings: Settings,
 ) -> dict:
     response = await client.messages.create(
-        model=settings.claude_model,
+        model=settings.claude_retrieval_model,
         max_tokens=256,
         system="Generate 2-3 semantically variant phrasings of the given query to broaden search coverage.",
         messages=[{"role": "user", "content": inp.original_query_text}],
@@ -298,7 +294,6 @@ async def _dispatch_tool(
 # ---------------------------------------------------------------------------
 
 
-@observe(name="retrieval-agent-llm-call", as_type="generation")
 async def _call_claude(
     client: anthropic.AsyncAnthropic,
     input_: RetrievalAgentInput,
@@ -311,7 +306,7 @@ async def _call_claude(
     system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
         top_k=settings.rag_top_k,
         project_context=project_context,
-        taxonomy=json.dumps(input_.taxonomy, indent=2),
+        taxonomy=json.dumps(input_.taxonomy, separators=(",", ":")),
     )
     qa_text = "\n".join(
         f"Q: {pair.question_text}\nA: {pair.answer_text}" for pair in input_.qa_pairs
@@ -323,14 +318,20 @@ async def _call_claude(
 
     messages: list[dict] = [{"role": "user", "content": user_content}]
 
-    for _ in range(MAX_ITERATIONS):
+    for iteration in range(MAX_ITERATIONS):
+        is_last = iteration == MAX_ITERATIONS - 1
         response = await client.messages.create(
-            model=settings.claude_model,
-            max_tokens=4096,
+            model=settings.claude_retrieval_model,
+            max_tokens=1024,
             system=system_prompt,
             messages=messages,
             tools=_TOOLS,
-            tool_choice={"type": "auto"},
+            # On the final iteration force the terminal tool so we always get a result
+            tool_choice=(
+                {"type": "tool", "name": "output_retrieved_docs"}
+                if is_last
+                else {"type": "auto"}
+            ),
         )
         # Append the raw content list so tool_use blocks round-trip correctly
         messages.append({"role": "assistant", "content": response.content})
@@ -356,12 +357,7 @@ async def _call_claude(
             )
         messages.append({"role": "user", "content": tool_results})
 
-    raise RuntimeError(
-        f"Retrieval agent exceeded {MAX_ITERATIONS} iterations without terminating"
-    )
 
-
-@observe(name="retrieval-agent")
 async def run(
     client: anthropic.AsyncAnthropic,
     input_: RetrievalAgentInput,

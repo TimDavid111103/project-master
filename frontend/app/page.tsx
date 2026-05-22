@@ -1,5 +1,6 @@
 "use client";
 
+import { ProjectSetup } from "@/components/ProjectSetup";
 import { PromptInput } from "@/components/PromptInput";
 import { QAPanel } from "@/components/QAPanel";
 import { ResultsView } from "@/components/ResultsView";
@@ -13,9 +14,17 @@ export default function Home() {
       <header className="mb-12 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">Prompt Master</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Paste a prompt. Answer a few questions. Get an expert rewrite.
+          Paste a prompt. Answer a few questions. Get a structured analysis.
         </p>
       </header>
+
+      {session.view === "project" && (
+        <ProjectSetup
+          onSubmit={session.createProject}
+          isLoading={session.isLoading}
+          error={session.error}
+        />
+      )}
 
       {session.view === "input" && (
         <PromptInput
