@@ -8,7 +8,7 @@ import uuid
 import anthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.agents import analysis_agent, clarifying_agent, retrieval_agent
+from backend.agents import analysis_agent, clarifying_agent
 from backend.config import Settings
 from backend.schemas.agents.analysis import IntentTranslationAgentInput
 from backend.schemas.agents.clarifying import (
@@ -19,7 +19,7 @@ from backend.schemas.agents.clarifying import (
     ProjectSetupAgentOutput,
 )
 from backend.schemas.agents.common import UserAnswer
-from backend.schemas.agents.retrieval import QAPair, RetrievalAgentInput
+from backend.schemas.agents.retrieval import QAPair
 from backend.schemas.api.projects import ProjectSetupContext, ProjectSetupRespondResponse
 from backend.schemas.api.session import SessionContext, SessionRespondResponse
 from backend.services import memory_service
@@ -120,18 +120,6 @@ async def run_respond_pipeline(
         for q, a in zip(context.questions, answers)
     ]
 
-    retrieval_output = await retrieval_agent.run(
-        client,
-        RetrievalAgentInput(
-            original_prompt=context.original_prompt,
-            qa_pairs=qa_pairs,
-            project_summary=memory.project_definition,
-            taxonomy=taxonomy,
-        ),
-        db,
-        settings,
-    )
-
     await memory_service.store_qa_pairs(db, project_id, qa_pairs, settings)
 
     translation_output = await analysis_agent.run(
@@ -139,7 +127,6 @@ async def run_respond_pipeline(
         IntentTranslationAgentInput(
             original_prompt=context.original_prompt,
             qa_pairs=qa_pairs,
-            retrieved_documents=retrieval_output.retrieved_docs,
             project_definition=memory.project_definition,
             past_translations=memory.past_translations,
         ),
@@ -156,5 +143,4 @@ async def run_respond_pipeline(
     return SessionRespondResponse(
         original_prompt=context.original_prompt,
         intent_translation=translation_output.intent_translation,
-        retrieved_documents=retrieval_output.retrieved_docs,
     )

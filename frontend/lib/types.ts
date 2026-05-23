@@ -99,16 +99,7 @@ export interface SessionRespondRequest {
   answers: UserAnswer[];
 }
 
-export interface RetrievedDocResult {
-  doc_id: string;
-  content: string;
-  similarity_score: number;
-  chunk_level: string;
-  parent_id: string | null;
-}
-
 export interface SessionRespondResponse {
   original_prompt: string;
   intent_translation: IntentTranslation;
-  retrieved_documents: RetrievedDocResult[];
 }

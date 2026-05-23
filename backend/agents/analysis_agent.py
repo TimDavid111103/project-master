@@ -14,8 +14,7 @@ but what the text literally instructs.
 You have access to:
 1. The prompt itself
 2. Q&A where the user describes what they believe the prompt does
-3. Retrieved reference knowledge about AI engineering patterns
-4. Past translations for this project (for continuity)
+3. Past translations for this project (for continuity)
 
 Produce an IntentTranslation with three fields:
 
@@ -40,11 +39,6 @@ async def _call_claude(
 ) -> IntentTranslationAgentOutput:
     settings = get_settings()
 
-    rag_context = "\n\n---\n\n".join(
-        f"[Reference {i + 1}]\n{doc.content}"
-        for i, doc in enumerate(input_.retrieved_documents)
-    ) or "(no reference documents retrieved)"
-
     qa_text = "\n".join(
         f"Q: {pair.question_text}\nA: {pair.answer_text}" for pair in input_.qa_pairs
     )
@@ -66,7 +60,6 @@ async def _call_claude(
         f"{project_context}"
         f"Prompt to translate:\n{input_.original_prompt}\n\n"
         f"User's description of what the prompt does (Q&A):\n{qa_text}\n\n"
-        f"Retrieved reference knowledge:\n{rag_context}\n\n"
         f"Past translations for this project:\n{past_context}"
     )
 

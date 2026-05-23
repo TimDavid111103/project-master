@@ -4,7 +4,6 @@ from pydantic import BaseModel
 
 from backend.schemas.agents.analysis import IntentTranslation
 from backend.schemas.agents.common import ClarifyingQuestion, UserAnswer
-from backend.schemas.agents.retrieval import RetrievedDocResult
 
 
 class SessionContext(BaseModel):
@@ -32,4 +31,3 @@ class SessionRespondRequest(BaseModel):
 class SessionRespondResponse(BaseModel):
     original_prompt: str
     intent_translation: IntentTranslation
-    retrieved_documents: list[RetrievedDocResult]

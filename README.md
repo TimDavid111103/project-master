@@ -1,10 +1,8 @@
 # Prompt Master
 
-> **v2** — This README documents the current state of the project as of the v2 release. The MVP produced a rewritten prompt; v2 replaces that with structured analysis across three graded dimensions, adds per-project memory, and upgrades the retrieval pipeline to an agentic loop.
+A tool for engineers building AI systems. You create a project, paste a prompt, answer a few clarifying questions, and receive a plain-language translation of what your prompt actually instructs — not what you intended, but what the text literally tells the model to do. The system surfaces the assumptions baked into your prompt and the gaps between what you wrote and what you likely wanted. It gets smarter over time, reading your project history before generating questions and before producing a translation.
 
-A tool for engineers building RAG and agentic systems. You create a project, paste a prompt, answer a few clarifying questions, and receive a structured analysis grading your prompt across three dimensions: intent accuracy, technical language, and standards alignment. Each dimension gets a letter grade (F through S) and a specific, actionable explanation. The system gets smarter over time — it reads your project history before generating questions and before grading your prompt.
-
-The system is not a general-purpose chatbot. It is a focused, three-step pipeline — clarify, retrieve, analyse — designed specifically around the task of evaluating and improving prompts for AI systems.
+The system is not a general-purpose chatbot. It is a focused two-step pipeline — clarify, then translate — designed specifically around understanding and improving prompts for AI systems.
 
 ---
 
@@ -15,92 +13,111 @@ prompt-master/
 │
 ├── backend/
 │   ├── agents/
-│   │   ├── base.py                   # Anthropic client factory, shared agent setup
-│   │   ├── clarifying_agent.py       # Stage 1 — generates questions, skips repeats using project memory
-│   │   ├── retrieval_agent.py        # Stage 2 — agentic loop over vector DB with five retrieval tools
-│   │   └── analysis_agent.py         # Stage 3 — grades the prompt on three dimensions, no rewrite
+│   │   ├── base.py                   # Anthropic client factory and shared agent setup
+│   │   ├── clarifying_agent.py       # Stage 1 — generates clarifying questions using project memory
+│   │   └── analysis_agent.py         # Stage 2 — translates what the prompt literally instructs
 │   │
 │   ├── rag/
-│   │   ├── chunker.py                # Docling-based hierarchical chunker with Claude context summaries
-│   │   └── embedder.py               # OpenAI embeddings API wrapper (text-embedding-3-small, 1536 dims)
+│   │   ├── chunker.py                # Hierarchical document chunker with Claude-generated context summaries
+│   │   └── embedder.py               # OpenAI embeddings wrapper
 │   │
 │   ├── db/
-│   │   ├── models.py                 # SQLAlchemy models — Document, Project, RawPrompt, QAPairRecord, PromptAnalysisRecord
-│   │   └── engine.py                 # Async SQLAlchemy engine and session factory
+│   │   ├── models.py                 # SQLAlchemy models for all tables
+│   │   └── engine.py                 # Async database engine and session factory
 │   │
 │   ├── schemas/
 │   │   ├── agents/
-│   │   │   ├── common.py             # ClarifyingQuestion and UserAnswer — shared across agents
-│   │   │   ├── clarifying.py         # ClarifyingAgentInput / ClarifyingAgentOutput
-│   │   │   ├── retrieval.py          # RetrievalAgentInput / RetrievalAgentOutput / RetrievedDocResult / QAPair
-│   │   │   └── analysis.py           # AnalysisAgentInput / AnalysisAgentOutput / PromptAnalysis / DimensionGrade
+│   │   │   ├── common.py             # Shared types used across agents
+│   │   │   ├── clarifying.py         # Input and output types for the clarifying agent
+│   │   │   ├── retrieval.py          # Shared QAPair type used across the pipeline
+│   │   │   └── analysis.py           # Input and output types for the intent translation agent
 │   │   ├── api/
-│   │   │   ├── session.py            # SessionStartRequest, SessionRespondResponse, SessionContext
-│   │   │   └── projects.py           # CreateProjectRequest / CreateProjectResponse
-│   │   └── memory.py                 # ProjectMemory — the context object passed into agents from memory storage
+│   │   │   ├── session.py            # Request and response types for session endpoints
+│   │   │   └── projects.py           # Request and response types for the projects endpoint
+│   │   └── memory.py                 # ProjectMemory — the context object passed into agents
 │   │
 │   ├── services/
-│   │   ├── session_service.py        # Orchestrates the full pipeline — wires agents and memory service
-│   │   └── memory_service.py         # Reads and writes project memory; implements the threshold strategy
+│   │   ├── session_service.py        # Orchestrates the full pipeline — wires both agents and memory
+│   │   └── memory_service.py         # Reads and writes per-project memory across sessions
 │   │
 │   ├── api/v1/
 │   │   ├── router.py                 # v1 API router
 │   │   └── endpoints/
-│   │       ├── session.py            # /session/start and /session/respond HTTP endpoints
-│   │       └── projects.py           # /projects endpoint for creating projects
+│   │       ├── session.py            # /session/start and /session/respond endpoints
+│   │       └── projects.py           # /projects endpoint
 │   │
-│   ├── config.py                     # All settings loaded from .env (models, DB URL, RAG params, memory threshold)
+│   ├── config.py                     # All settings loaded from environment variables
+│   ├── dependencies.py               # FastAPI dependency injection (database session, etc.)
 │   └── main.py                       # FastAPI app factory, CORS middleware, lifespan
 │
-├── scripts/
-│   ├── taxonomy_discovery.py         # Offline — uses Claude to discover categories and tags from raw corpus
-│   └── ingest.py                     # Offline — hierarchical chunk, tag, context-summarise, embed, write to DB
+├── frontend/
+│   ├── app/
+│   │   ├── layout.tsx                # Root layout and global styles
+│   │   └── page.tsx                  # Entry page
+│   ├── components/
+│   │   ├── HomeView.tsx              # Project list and navigation
+│   │   ├── NewProjectFlow.tsx        # Step-by-step project creation flow
+│   │   ├── ProjectDetailView.tsx     # Project history and session browser
+│   │   ├── PromptSessionFlow.tsx     # The main prompt analysis session UI
+│   │   ├── AsteriskLogo.tsx          # Shared logo component
+│   │   └── ui/                       # shadcn/ui primitives
+│   ├── hooks/
+│   │   ├── useProjectSetup.ts        # State and logic for creating a new project
+│   │   ├── useProjects.ts            # Fetches and manages the project list
+│   │   └── useSession.ts             # Manages a prompt analysis session end-to-end
+│   └── lib/
+│       ├── api.ts                    # All backend API calls
+│       ├── types.ts                  # Shared TypeScript types mirroring backend schemas
+│       └── utils.ts                  # Utility helpers
 │
-├── corpus/                           # Source documents for the knowledge base (.md and .pdf files)
-│   ├── claude-streaming-messages.md
-│   ├── claude-structured-output.md
-│   └── claude-tool-use.md
+├── scripts/
+│   ├── taxonomy_discovery.py         # Uses Claude to discover categories and tags from the raw corpus
+│   ├── ingest.py                     # Chunks, embeds, and writes corpus documents into the database
+│   └── test_pipeline.py              # Manual end-to-end pipeline smoke test
+│
+├── tests/
+│   ├── conftest.py                   # Shared fixtures and test database setup
+│   └── integration/
+│       ├── test_session_start.py     # Integration tests for session start
+│       └── test_session_respond.py   # Integration tests for session respond
 │
 ├── alembic/versions/
-│   ├── 0001_initial.py               # Enables pgvector, creates documents table with HNSW index
-│   └── 0002_v2_schema.py             # Adds memory tables, hierarchical chunking columns, switches to DiskANN
-├── taxonomy.json                     # Single source of truth for all RAG categories and concept tags
-├── docker-compose.yml                # Runs the pgvector database only (backend runs locally)
+│   ├── 0001_initial.py               # Initial schema — documents table with pgvector HNSW index
+│   ├── 0002_v2_schema.py             # Adds project memory tables and hierarchical chunking columns
+│   └── 0003_v3_schema.py             # v3 schema changes
+│
+├── corpus/                           # Legacy document corpus from a prior RAG retrieval stage
+├── taxonomy.json                     # Legacy taxonomy from a prior RAG retrieval stage
+├── docker-compose.yml                # Runs the pgvector database
+├── Dockerfile                        # Backend container definition
+├── main.py                           # Root entry point for running the backend server
 └── pyproject.toml                    # Python project config and dependencies
 ```
 
 ---
 
-## Strategies
+## Backend
 
-### Three-agent pipeline
+The backend is a FastAPI application built around a two-stage pipeline. Each stage is implemented as a discrete agent: the Clarifying Agent generates questions tailored to the current project, and the Analysis Agent translates what the prompt literally instructs. Both agents use Claude's tool use API to guarantee that every LLM response is a validated Pydantic model — there is no free-text parsing anywhere in the pipeline.
 
-The session flow is broken into three discrete agents, each with a single responsibility. The Clarifying Agent reads project memory before generating questions and suppresses any question already asked in a previous session. The Retrieval Agent runs an agentic loop over the vector DB, choosing from five tools — metadata-filtered search, parent chunk retrieval, multi-query, query expansion, and relevance checking — until it decides it has gathered enough evidence to terminate. The Prompt Analysis Agent receives the retrieved context and project history and returns a `PromptAnalysis` object: three `DimensionGrade` values, each with a letter grade and a specific explanation. No agent produces a rewritten prompt. `session_service.py` is the only place where all three agents, the memory service, and the taxonomy are wired together.
+The session service is the single place where agents and memory are wired together. It is the only layer that knows about the full pipeline flow.
 
-### Forced structured output via tool use
+## Frontend
 
-Every agent uses Claude's tool use API with `tool_choice: { type: "tool" }` to force a specific tool call on every generation call. This guarantees that LLM responses are always validated Pydantic models — there is no free-text parsing anywhere in the pipeline. Each agent defines its output schema directly from its Pydantic model via `model_json_schema()`. The Retrieval Agent extends this pattern in two directions: the five retrieval tools each have an `input_schema` generated from a dedicated Pydantic model, and `_dispatch_tool` calls `Model.model_validate(args)` on every tool invocation from Claude before executing it. This means every boundary where data crosses from the LLM into Python code is validated.
+The frontend is a Next.js application. The view layer is split into a small set of focused components: a home view for navigating projects, a creation flow for setting up new projects, a detail view for browsing a project's history, and a session flow for running a prompt analysis. Each component delegates its data-fetching and state management to a dedicated hook, keeping the components themselves presentational. All backend communication goes through a single API module.
 
-### Project memory with threshold-based context
+## Agents
 
-Every project has its own isolated memory that persists raw prompts, Q&A pairs, and structured analyses across sessions. Before each pipeline run, `memory_service.load_memory` reads this history and assembles a `ProjectMemory` object that agents can use as context. Below a configurable session threshold (default 10 entries), all memory is passed directly into the agent context. Above the threshold, the current prompt is embedded and the most similar past entries are retrieved by cosine similarity from each memory table — the same two-stage pattern used for the knowledge base. Previous questions are always fetched in full regardless of the threshold, because deduplication is a hard constraint, not a context enrichment.
+Each agent is a self-contained unit with a single responsibility. The Clarifying Agent reads project memory before generating questions and suppresses any question already asked in a prior session. The Analysis Agent receives the prompt, the Q&A pairs, and project history, and returns a plain-language translation describing what the prompt literally instructs — along with the implicit assumptions it makes and the gaps between intent and content.
 
-### Agentic retrieval with taxonomy validation
+## Schemas
 
-Instead of a single structured query, the Retrieval Agent drives an iterative conversation with Claude using `tool_choice: { type: "auto" }`. On each turn Claude can call one or more retrieval tools; all results are fed back as `tool_result` blocks in the same conversation; and the loop continues until Claude calls `output_retrieved_docs`. The agent is responsible for generating the taxonomy metadata (category and concept_tags) internally from the prompt and answers. The tool dispatcher validates these values against `taxonomy.json` — unknown categories are corrected and unknown tags are dropped — and the error is returned as a tool result string so Claude can self-correct on the next iteration. The loop is bounded by `MAX_ITERATIONS = 8`.
+All data contracts are defined as Pydantic models before any logic is written. Agent inputs and outputs, API request and response bodies, and the internal memory context object all have explicit types. The agent schemas serve a dual purpose: they define the tool input schemas that Claude receives, and they validate tool call arguments before any business logic runs.
 
-### Hierarchical chunking with contextual retrieval
+## Memory
 
-Documents are parsed using Docling, which preserves headings, tables, code blocks, and lists rather than splitting blindly on token boundaries. Each document is chunked at two levels: section-level parent chunks (≈ 2048 tokens) and child chunks (≈ 512 tokens), with each child carrying a `parent_id` foreign key back to its section. At ingest time, Claude generates a one-sentence `context_summary` for each child chunk describing what it covers and where it sits in the document. This summary is prepended to the chunk content before embedding, so the vector representation reflects document position and not just the raw text. During retrieval, the Retrieval Agent can call `fetch_parent_chunk` to pull the full section when a child chunk alone does not provide enough context.
+Every project maintains its own isolated memory that persists prompts, Q&A pairs, and translations across sessions. Before each pipeline run, the memory service reads this history and assembles a context object that both agents can use. Past questions are always retrieved in full for deduplication. For projects with longer histories, the service switches to similarity-based retrieval, embedding the current prompt and fetching the most relevant past entries rather than passing everything at once.
 
-### Separation of embedding and generation models
+## Scripts
 
-Embeddings are produced by OpenAI (`text-embedding-3-small`) while all generation calls go to Anthropic Claude (`claude-sonnet-4-6`). The two are kept completely separate — the embedder has no dependency on the agent code and vice versa. Embeddings are used in three places: the knowledge base vector store, the memory similarity retrieval above the session threshold, and the context summary retrieval within the ingest pipeline. All three use the same embedder function so the embedding space is consistent.
-
-### pgvector HNSW for vector search
-
-All vector indexes use pgvector's HNSW implementation. HNSW (Hierarchical Navigable Small World) provides fast approximate nearest-neighbour search with configurable precision (`m = 16`, `ef_construction = 64`). The `docker-compose.yml` runs the `pgvector/pgvector:pg16` image. HNSW indexes are created on the `documents.embedding` column and on the nullable `embedding` columns of all three memory tables, with a `WHERE embedding IS NOT NULL` predicate to exclude unembedded rows.
-
-### Observability via Langfuse
-
-All LLM calls are decorated with `@observe` from Langfuse. Each agent separates the observable generation call (`_call_claude`) from its public `run` function, giving a clean two-level trace: the agent span wraps the generation span. For the Retrieval Agent the entire agentic loop runs inside a single `_call_claude` invocation, so all iterations appear as one generation span — making it straightforward to see how many tool calls the agent made before terminating and what it retrieved.
+The scripts directory contains offline tooling that runs outside the main application. A pipeline smoke test script exercises the full session flow end-to-end without going through the HTTP layer. The taxonomy discovery and ingest scripts are legacy tooling from a prior version of the project that included a RAG retrieval stage.

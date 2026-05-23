@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from backend.schemas.agents.retrieval import QAPair, RetrievedDocResult
+from backend.schemas.agents.retrieval import QAPair
 
 
 class IntentTranslation(BaseModel):
@@ -12,7 +12,6 @@ class IntentTranslation(BaseModel):
 class IntentTranslationAgentInput(BaseModel):
     original_prompt: str
     qa_pairs: list[QAPair]
-    retrieved_documents: list[RetrievedDocResult]
     project_definition: str | None
     past_translations: list[str]
 
