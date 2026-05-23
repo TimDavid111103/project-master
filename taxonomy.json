@@ -1,58 +1,43 @@
 {
-  "api_features": [
-    "structured_outputs",
-    "streaming_messages",
-    "tool_use",
-    "json_outputs",
-    "strict_tool_use"
+  "frontend": [
+    "react", "nextjs", "vue", "svelte", "angular", "tailwind", "typescript",
+    "vite", "webpack", "shadcn", "radix_ui", "framer_motion"
   ],
-  "model_compatibility": [
-    "claude_opus",
-    "claude_sonnet",
-    "claude_haiku",
-    "claude_mythos_preview",
-    "model_versioning"
+  "backend": [
+    "nodejs", "python", "fastapi", "express", "django", "nestjs", "go",
+    "rust", "hono", "bun", "deno", "elixir", "ruby_on_rails"
   ],
-  "cloud_platforms": [
-    "anthropic_api",
-    "amazon_bedrock",
-    "microsoft_foundry",
-    "google_vertex_ai"
+  "database": [
+    "postgresql", "mysql", "mongodb", "sqlite", "redis", "supabase",
+    "planetscale", "neon", "turso", "dynamodb", "firestore", "cockroachdb"
   ],
-  "sdk_and_tooling": [
-    "python_sdk",
-    "typescript_sdk",
-    "php_sdk",
-    "csharp_sdk",
-    "cli_tool",
-    "async_streaming",
-    "sync_streaming"
+  "authentication": [
+    "clerk", "auth0", "supabase_auth", "nextauth", "firebase_auth",
+    "cognito", "lucia", "better_auth", "workos"
   ],
-  "output_configuration": [
-    "output_config_format",
-    "schema_validation",
-    "json_schema",
-    "response_formatting",
-    "malformed_json_prevention"
+  "infrastructure": [
+    "docker", "kubernetes", "aws", "gcp", "azure", "vercel", "railway",
+    "fly_io", "render", "cloudflare_workers", "netlify", "github_actions"
   ],
-  "streaming_protocol": [
-    "server_sent_events",
-    "incremental_response",
-    "text_delta_events",
-    "stream_flag",
-    "jsonl_format"
+  "ai_ml": [
+    "openai", "anthropic", "langchain", "langgraph", "huggingface",
+    "replicate", "together_ai", "pinecone", "weaviate", "qdrant",
+    "llamaindex", "embeddings"
   ],
-  "data_and_privacy": [
-    "zero_data_retention",
-    "data_retention_policy",
-    "technical_retention",
-    "zdr_compliance"
+  "mobile": [
+    "react_native", "flutter", "expo", "swift", "kotlin",
+    "capacitor", "ionic"
   ],
-  "migration_and_versioning": [
-    "beta_migration",
-    "deprecated_parameters",
-    "output_format_parameter",
-    "beta_headers",
-    "api_transition_period"
+  "payments": [
+    "stripe", "paddle", "lemonsqueezy", "paypal", "braintree",
+    "razorpay", "adyen"
+  ],
+  "storage": [
+    "s3", "cloudflare_r2", "supabase_storage", "cloudinary",
+    "uploadthing", "bunny_cdn", "firebase_storage"
+  ],
+  "monitoring": [
+    "sentry", "datadog", "grafana", "betterstack", "logtail",
+    "axiom", "highlight", "posthog"
   ]
 }

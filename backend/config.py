@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str
 
@@ -15,19 +15,8 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
-    langfuse_host: str = "https://cloud.langfuse.com"
-
-    rag_top_k: int = 5
-    rag_min_similarity: float = 0.7
-
+    rag_top_k: int = 8
     chunk_size: int = 512
-    chunk_overlap: int = 64
-    parent_chunk_size: int = 2048
-
-    memory_session_threshold: int = 10
-    memory_top_k: int = 5
 
 
 @lru_cache

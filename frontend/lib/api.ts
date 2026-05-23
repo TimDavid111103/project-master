@@ -1,15 +1,12 @@
 import type {
   CreateProjectRequest,
   CreateProjectResponse,
-  ProjectHistoryResponse,
+  PipelineAnalyzeRequest,
+  PipelineAnalyzeResponse,
+  PipelineChatRequest,
+  PipelineChatResponse,
+  ProjectDetailResponse,
   ProjectListItem,
-  ProjectSetupRespondRequest,
-  ProjectSetupRespondResponse,
-  ProjectSetupStartResponse,
-  SessionRespondRequest,
-  SessionRespondResponse,
-  SessionStartRequest,
-  SessionStartResponse,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -48,25 +45,13 @@ export const api = {
   createProject: (body: CreateProjectRequest): Promise<CreateProjectResponse> =>
     post("/api/v1/projects", body),
 
-  projectHistory: (projectId: string): Promise<ProjectHistoryResponse> =>
-    get(`/api/v1/projects/${projectId}/history`),
+  getProject: (projectId: string): Promise<ProjectDetailResponse> =>
+    get(`/api/v1/projects/${projectId}`),
 
-  // Project setup
-  setupStart: (projectId: string): Promise<ProjectSetupStartResponse> =>
-    post(`/api/v1/projects/${projectId}/setup/start`, {}),
+  // Pipeline
+  pipelineChat: (body: PipelineChatRequest): Promise<PipelineChatResponse> =>
+    post("/api/v1/pipeline/chat", body),
 
-  setupRespond: (
-    projectId: string,
-    body: ProjectSetupRespondRequest
-  ): Promise<ProjectSetupRespondResponse> =>
-    post(`/api/v1/projects/${projectId}/setup/respond`, body),
-
-  // Prompt session
-  sessionStart: (body: SessionStartRequest): Promise<SessionStartResponse> =>
-    post("/api/v1/session/start", body),
-
-  sessionRespond: (
-    body: SessionRespondRequest
-  ): Promise<SessionRespondResponse> =>
-    post("/api/v1/session/respond", body),
+  pipelineAnalyze: (body: PipelineAnalyzeRequest): Promise<PipelineAnalyzeResponse> =>
+    post("/api/v1/pipeline/analyze", body),
 };

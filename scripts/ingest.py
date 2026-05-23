@@ -1,202 +1,127 @@
-"""Offline script: chunk, tag, embed, and store corpus documents in pgvector.
+"""Ingest documents from the corpus/ folder into the vector database.
 
 Usage:
-    uv run python scripts/ingest.py --corpus-dir corpus/ --taxonomy taxonomy.json
+    python scripts/ingest.py
 
-Run taxonomy_discovery.py and finalize taxonomy.json before running this script.
+Reads every .txt and .md file in corpus/, splits each into chunks,
+embeds them with OpenAI, and upserts them into the documents table.
+Existing documents for the same source file are deleted first.
 """
-import argparse
 import asyncio
-import json
-import pathlib
 import sys
-import uuid
+from pathlib import Path
 
-_ROOT = pathlib.Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+from openai import AsyncOpenAI
+from sqlalchemy import delete, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
-import anthropic
-from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.config import get_settings
-from backend.db.engine import async_session_factory
 from backend.db.models import Document
-from backend.rag.chunker import HierarchicalChunk, chunk_document
-from backend.rag.embedder import embed_text
+
+CORPUS_DIR = Path(__file__).resolve().parents[1] / "corpus"
+SUPPORTED_EXTENSIONS = {".txt", ".md"}
 
 
-class ChunkTagOutput(BaseModel):
-    category: str
-    concept_tags: list[str]
+def _split_into_chunks(text: str, max_chars: int) -> list[str]:
+    """Split text at paragraph boundaries so each chunk is under max_chars."""
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        return [text.strip()] if text.strip() else []
+
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for para in paragraphs:
+        if current and current_len + len(para) + 2 > max_chars:
+            chunks.append("\n\n".join(current))
+            current = [para]
+            current_len = len(para)
+        else:
+            current.append(para)
+            current_len += len(para) + 2
+
+    if current:
+        chunks.append("\n\n".join(current))
+
+    return chunks
 
 
-_TAG_SYSTEM_TEMPLATE = """\
-You are a document classifier. Given a text chunk, assign it a category and concept tags
-from the following taxonomy only. Do not invent new categories or tags.
-
-Taxonomy:
-{taxonomy}\
-"""
-
-
-async def tag_chunk(
-    client: anthropic.AsyncAnthropic,
-    chunk: str,
-    taxonomy: dict,
-    settings,
-) -> ChunkTagOutput:
-    system = _TAG_SYSTEM_TEMPLATE.format(taxonomy=json.dumps(taxonomy, indent=2))
-    response = await client.messages.create(
-        model=settings.claude_model,
-        max_tokens=256,
-        system=system,
-        messages=[{"role": "user", "content": chunk}],
-        tools=[
-            {
-                "name": "output_tags",
-                "description": "Output the category and concept tags for this chunk.",
-                "input_schema": ChunkTagOutput.model_json_schema(),
-            }
-        ],
-        tool_choice={"type": "tool", "name": "output_tags"},
+async def embed_texts(texts: list[str], client: AsyncOpenAI, settings) -> list[list[float]]:
+    response = await client.embeddings.create(
+        model=settings.embedding_model,
+        input=texts,
+        dimensions=settings.embedding_dimensions,
     )
-    tool_block = next(b for b in response.content if b.type == "tool_use")
-    return ChunkTagOutput.model_validate(tool_block.input)
+    return [item.embedding for item in sorted(response.data, key=lambda x: x.index)]
 
 
 async def ingest_file(
-    path: pathlib.Path,
-    client: anthropic.AsyncAnthropic,
+    path: Path,
     session: AsyncSession,
-    taxonomy: dict,
+    openai_client: AsyncOpenAI,
     settings,
-    batch_size: int = 10,
 ) -> int:
-    chunks: list[HierarchicalChunk] = await chunk_document(path, client, settings)
+    source_file = path.name
+    text = path.read_text(encoding="utf-8")
+    max_chars = settings.chunk_size * 4  # ~4 chars per token
 
-    # --- First pass: insert section chunks and record their UUIDs ---
-    # Section chunks are tagged and embedded so the Retrieval Agent can fetch them as context.
-    section_uuids: dict[int, uuid.UUID] = {}  # position → uuid
-    section_batch: list[Document] = []
+    chunks = _split_into_chunks(text, max_chars)
+    if not chunks:
+        print(f"  {source_file}: skipped (empty)")
+        return 0
 
-    for position, chunk in enumerate(chunks):
-        if chunk.chunk_level != "section":
-            continue
-        tags = await tag_chunk(client, chunk.content, taxonomy, settings)
-        embedding = await embed_text(chunk.content, settings)
-        doc_id = uuid.uuid4()
-        section_uuids[position] = doc_id
-        section_batch.append(
-            Document(
-                id=doc_id,
-                source_file=str(path),
-                chunk_index=position,
-                content=chunk.content,
-                category=tags.category,
-                concept_tags=tags.concept_tags,
-                embedding=embedding,
-                parent_id=None,
-                chunk_level="section",
-                context_summary=None,
-            )
+    # Remove existing documents for this source file
+    await session.execute(
+        delete(Document).where(Document.source_file == source_file)
+    )
+
+    # Embed all chunks in a single API call
+    embeddings = await embed_texts(chunks, openai_client, settings)
+
+    for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        doc = Document(
+            source_file=source_file,
+            chunk_index=idx,
+            content=chunk,
+            embedding=embedding,
         )
+        session.add(doc)
 
-    session.add_all(section_batch)
     await session.commit()
-    print(f"  Committed {len(section_batch)} section chunks from {path.name}")
-
-    # --- Second pass: insert child chunks with parent_id and inherited tags ---
-    # Tags are inherited from the parent section. Embedding uses context_summary + content.
-    child_batch: list[Document] = []
-    inserted = len(section_batch)
-
-    for position, chunk in enumerate(chunks):
-        if chunk.chunk_level != "chunk":
-            continue
-
-        parent_uuid: uuid.UUID | None = None
-        if chunk.parent_position is not None:
-            parent_uuid = section_uuids.get(chunk.parent_position)
-
-        # Inherit tags from the parent section chunk if available
-        parent_doc = next(
-            (d for d in section_batch if d.id == parent_uuid), None
-        )
-        if parent_doc:
-            category = parent_doc.category
-            concept_tags = parent_doc.concept_tags
-        else:
-            # Orphaned child — tag independently
-            tags = await tag_chunk(client, chunk.content, taxonomy, settings)
-            category = tags.category
-            concept_tags = tags.concept_tags
-
-        # Embed context_summary prepended to content for richer representation
-        embed_text_value = (
-            f"{chunk.context_summary}\n\n{chunk.content}"
-            if chunk.context_summary
-            else chunk.content
-        )
-        embedding = await embed_text(embed_text_value, settings)
-
-        child_batch.append(
-            Document(
-                id=uuid.uuid4(),
-                source_file=str(path),
-                chunk_index=position,
-                content=chunk.content,
-                category=category,
-                concept_tags=concept_tags,
-                embedding=embedding,
-                parent_id=parent_uuid,
-                chunk_level="chunk",
-                context_summary=chunk.context_summary or None,
-            )
-        )
-
-        if len(child_batch) >= batch_size:
-            session.add_all(child_batch)
-            await session.commit()
-            inserted += len(child_batch)
-            print(f"  Committed {inserted} total chunks from {path.name}...")
-            child_batch = []
-
-    if child_batch:
-        session.add_all(child_batch)
-        await session.commit()
-        inserted += len(child_batch)
-
-    return inserted
+    print(f"  {source_file}: {len(chunks)} chunks ingested")
+    return len(chunks)
 
 
-async def run_ingestion(corpus_dir: pathlib.Path, taxonomy_path: pathlib.Path) -> None:
+async def main() -> None:
     settings = get_settings()
-    taxonomy = json.loads(taxonomy_path.read_text())
-    if "_note" in taxonomy:
-        del taxonomy["_note"]
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    files = list(corpus_dir.glob("**/*.txt")) + list(corpus_dir.glob("**/*.md")) + list(corpus_dir.glob("**/*.pdf"))
+    files = [
+        f for f in sorted(CORPUS_DIR.iterdir())
+        if f.is_file() and f.suffix in SUPPORTED_EXTENSIONS
+    ]
+
     if not files:
-        print(f"No .txt, .md, or .pdf files found in {corpus_dir}.")
+        print(f"No .txt or .md files found in {CORPUS_DIR}")
         return
 
-    total = 0
-    async for session in async_session_factory():
-        for path in files:
-            print(f"Ingesting {path.name}...")
-            count = await ingest_file(path, client, session, taxonomy, settings)
-            total += count
-            print(f"  Done — {count} chunks stored.")
+    print(f"Found {len(files)} file(s) in corpus/\n")
 
-    print(f"\nIngestion complete. Total chunks stored: {total}")
+    engine = create_async_engine(settings.database_url)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    total = 0
+    async with async_session() as session:
+        for file_path in files:
+            total += await ingest_file(file_path, session, openai_client, settings)
+
+    await engine.dispose()
+    print(f"\nDone. {total} total chunks ingested.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--corpus-dir", default="corpus", type=pathlib.Path)
-    parser.add_argument("--taxonomy", default="taxonomy.json", type=pathlib.Path)
-    args = parser.parse_args()
-    asyncio.run(run_ingestion(args.corpus_dir, args.taxonomy))
+    asyncio.run(main())

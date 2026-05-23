@@ -2,30 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import type { ProjectHistoryResponse, PromptSessionRecord } from "@/lib/types";
+import type { ProjectDetailResponse, TechStackItem } from "@/lib/types";
 
 interface Props {
   projectId: string;
   onBack: () => void;
-  onAnalyzePrompt: () => void;
-  onRunSetup: () => void;
+  onStartChat: (roughIdea: string) => void;
 }
 
-export function ProjectDetailView({
-  projectId,
-  onBack,
-  onAnalyzePrompt,
-  onRunSetup,
-}: Props) {
-  const [data, setData] = useState<ProjectHistoryResponse | null>(null);
+export function ProjectDetailView({ projectId, onBack, onStartChat }: Props) {
+  const [data, setData] = useState<ProjectDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
     api
-      .projectHistory(projectId)
+      .getProject(projectId)
       .then((d) => {
         setData(d);
         setIsLoading(false);
@@ -58,11 +51,8 @@ export function ProjectDetailView({
     );
   }
 
-  const needsSetup = !data.definition;
-
   return (
     <div className="min-h-screen flex flex-col max-w-3xl mx-auto px-4 py-20">
-      {/* Back */}
       <button
         onClick={onBack}
         className="text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] mb-10 flex items-center gap-1 transition-colors self-start"
@@ -70,7 +60,7 @@ export function ProjectDetailView({
         ← All projects
       </button>
 
-      {/* Project header */}
+      {/* Header */}
       <div className="mb-8">
         <h2
           className="text-3xl font-semibold mb-1"
@@ -81,140 +71,93 @@ export function ProjectDetailView({
         <p className="text-[var(--muted-foreground)] text-sm">{data.rough_idea}</p>
       </div>
 
-      {/* Definition card */}
-      {data.definition ? (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 mb-8">
-          <p className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-2">
-            Project definition
-          </p>
-          <p className="text-sm leading-relaxed">{data.definition}</p>
-        </div>
-      ) : (
+      {/* Incomplete state */}
+      {!data.is_complete && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 mb-8 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-amber-800 mb-1">
-              Project setup incomplete
+              Project planning incomplete
             </p>
             <p className="text-xs text-amber-700">
-              Complete the setup Q&A to enable memory-powered analysis sessions.
+              Continue the conversation to generate your project plan and tech stack.
             </p>
           </div>
           <button
-            onClick={onRunSetup}
+            onClick={() => onStartChat(data.rough_idea)}
             className="shrink-0 text-sm font-medium text-amber-800 border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 transition-colors"
           >
-            Complete setup
+            Continue planning
           </button>
         </div>
       )}
 
-      {/* Analyze button */}
-      <div className="mb-10">
-        <button
-          onClick={onAnalyzePrompt}
-          disabled={needsSetup}
-          className="px-6 py-3 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-        >
-          Analyze a prompt
-        </button>
-      </div>
-
-      {/* Past sessions */}
-      {data.sessions.length > 0 && (
-        <div>
+      {/* Project plan */}
+      {data.project_plan && (
+        <div className="mb-8">
           <h3 className="text-sm font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-4">
-            Past sessions
+            Project plan
           </h3>
-          <div className="flex flex-col gap-3">
-            {data.sessions.map((session) => (
-              <SessionCard
-                key={session.session_id}
-                session={session}
-                isExpanded={expanded === session.session_id}
-                onToggle={() =>
-                  setExpanded((prev) =>
-                    prev === session.session_id ? null : session.session_id
-                  )
-                }
-              />
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <PlanCard label="Vision" value={data.project_plan.vision} />
+            <PlanCard label="Target audience" value={data.project_plan.target_audience} />
+            <PlanCard label="Problem addressed" value={data.project_plan.problem_addressed} />
+            <PlanCard label="MVP scope" value={data.project_plan.mvp_scope} />
           </div>
         </div>
+      )}
+
+      {/* Tech stack */}
+      {data.tech_stack && (
+        <>
+          <div className="mb-8">
+            <h3 className="text-sm font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-4">
+              MVP tech stack
+            </h3>
+            <TechStackGrid items={data.tech_stack.mvp} />
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-4">
+              Full product tech stack
+            </h3>
+            <TechStackGrid items={data.tech_stack.full_product} />
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function SessionCard({
-  session,
-  isExpanded,
-  onToggle,
-}: {
-  session: PromptSessionRecord;
-  isExpanded: boolean;
-  onToggle: () => void;
-}) {
-  const t = session.intent_translation;
-
+function PlanCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
-      <button
-        onClick={onToggle}
-        className="w-full text-left px-5 py-4 flex items-start justify-between gap-4 hover:bg-[var(--secondary)] transition-colors"
-      >
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium line-clamp-2">{session.original_prompt}</p>
-          <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
-            {formatDate(session.created_at)}
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+      <p className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-2">
+        {label}
+      </p>
+      <p className="text-sm leading-relaxed">{value}</p>
+    </div>
+  );
+}
+
+function TechStackGrid({ items }: { items: TechStackItem[] }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-5 py-4"
+        >
+          <div className="flex items-start justify-between gap-4 mb-1">
+            <p className="text-sm font-medium">{item.name}</p>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--secondary)] text-[var(--muted-foreground)] shrink-0">
+              {item.category}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--muted-foreground)] leading-relaxed">
+            {item.rationale}
           </p>
         </div>
-        <span className="text-[var(--muted-foreground)] text-sm shrink-0">
-          {isExpanded ? "↑" : "↓"}
-        </span>
-      </button>
-
-      {isExpanded && (
-        <div className="px-5 pb-5 border-t border-[var(--border)] pt-4 flex flex-col gap-4">
-          <div>
-            <p className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-1.5">
-              What it instructs
-            </p>
-            <p className="text-sm leading-relaxed">{t.what_the_prompt_instructs}</p>
-          </div>
-
-          {t.assumptions_made.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-1.5">
-                Assumptions made
-              </p>
-              <ul className="flex flex-col gap-1">
-                {t.assumptions_made.map((a, i) => (
-                  <li key={i} className="text-sm flex gap-2">
-                    <span className="text-[var(--accent)] shrink-0">•</span>
-                    {a}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {t.potential_gaps.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-1.5">
-                Potential gaps
-              </p>
-              <ul className="flex flex-col gap-1">
-                {t.potential_gaps.map((g, i) => (
-                  <li key={i} className="text-sm flex gap-2">
-                    <span className="text-[var(--muted-foreground)] shrink-0">○</span>
-                    {g}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -223,12 +166,4 @@ function Spinner() {
   return (
     <div className="w-6 h-6 border-2 border-[var(--border)] border-t-[var(--accent)] rounded-full animate-spin" />
   );
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }

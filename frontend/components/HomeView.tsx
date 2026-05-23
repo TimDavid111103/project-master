@@ -27,10 +27,10 @@ export function HomeView({
           className="text-4xl font-semibold tracking-tight"
           style={{ fontFamily: "var(--font-lora), serif" }}
         >
-          Prompt Master
+          Project Master
         </h1>
         <p className="text-[var(--muted-foreground)] text-base max-w-sm text-center">
-          Structured prompt analysis for AI engineers
+          Turn your idea into a project plan and tech stack
         </p>
       </div>
 
@@ -102,12 +102,12 @@ function ProjectList({
             <div className="flex flex-col items-end gap-1 shrink-0">
               <span
                 className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  project.definition
+                  project.is_complete
                     ? "bg-green-100 text-green-700"
                     : "bg-amber-100 text-amber-700"
                 }`}
               >
-                {project.definition ? "Ready" : "Setup needed"}
+                {project.is_complete ? "Complete" : "Draft"}
               </span>
               <span className="text-xs text-[var(--muted-foreground)]">
                 {formatDate(project.created_at)}

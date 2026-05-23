@@ -3,8 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from backend.schemas.agents.common import ClarifyingQuestion, UserAnswer
-from backend.schemas.agents.analysis import IntentTranslation
+from backend.schemas.agents.ideation import ProjectPlan
+from backend.schemas.agents.tech_stack import TechStack
 
 
 class CreateProjectRequest(BaseModel):
@@ -23,43 +23,15 @@ class ProjectListItem(BaseModel):
     project_id: uuid.UUID
     name: str
     rough_idea: str
-    definition: str | None
+    is_complete: bool
     created_at: datetime
 
 
-class PromptSessionRecord(BaseModel):
-    session_id: uuid.UUID
-    original_prompt: str
-    intent_translation: IntentTranslation
-    created_at: datetime
-
-
-class ProjectHistoryResponse(BaseModel):
+class ProjectDetailResponse(BaseModel):
     project_id: uuid.UUID
     name: str
     rough_idea: str
-    definition: str | None
+    is_complete: bool
+    project_plan: ProjectPlan | None
+    tech_stack: TechStack | None
     created_at: datetime
-    sessions: list[PromptSessionRecord]
-
-
-class ProjectSetupContext(BaseModel):
-    """Stateless blob echoed from setup/start into setup/respond."""
-    project_id: uuid.UUID
-    rough_idea: str
-    questions: list[ClarifyingQuestion]
-
-
-class ProjectSetupStartResponse(BaseModel):
-    setup_context: ProjectSetupContext
-    questions: list[ClarifyingQuestion]
-
-
-class ProjectSetupRespondRequest(BaseModel):
-    setup_context: ProjectSetupContext
-    answers: list[UserAnswer]
-
-
-class ProjectSetupRespondResponse(BaseModel):
-    project_id: uuid.UUID
-    project_definition: str

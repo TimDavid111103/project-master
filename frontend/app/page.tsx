@@ -3,17 +3,16 @@
 import { useState } from "react";
 import { HomeView } from "@/components/HomeView";
 import { NewProjectFlow } from "@/components/NewProjectFlow";
+import { IdeationChatFlow } from "@/components/IdeationChatFlow";
 import { ProjectDetailView } from "@/components/ProjectDetailView";
-import { PromptSessionFlow } from "@/components/PromptSessionFlow";
 import { useProjects } from "@/hooks/useProjects";
 import type { ProjectListItem } from "@/lib/types";
 
 type AppView =
   | { kind: "home" }
   | { kind: "new-project" }
-  | { kind: "project-detail"; projectId: string; projectName: string }
-  | { kind: "prompt-session"; projectId: string; projectName: string }
-  | { kind: "project-setup"; projectId: string };
+  | { kind: "ideation-chat"; projectId: string; projectName: string; initialMessage: string }
+  | { kind: "project-detail"; projectId: string; projectName: string };
 
 export default function Home() {
   const { projects, isLoading, error, reload } = useProjects();
@@ -27,11 +26,34 @@ export default function Home() {
   if (view.kind === "new-project") {
     return (
       <NewProjectFlow
-        onComplete={(projectId) => {
-          reload();
-          setView({ kind: "project-detail", projectId, projectName: "Project" });
+        onComplete={(projectId, projectName, roughIdea) => {
+          setView({
+            kind: "ideation-chat",
+            projectId,
+            projectName,
+            initialMessage: roughIdea,
+          });
         }}
         onCancel={goHome}
+      />
+    );
+  }
+
+  if (view.kind === "ideation-chat") {
+    return (
+      <IdeationChatFlow
+        projectId={view.projectId}
+        projectName={view.projectName}
+        initialMessage={view.initialMessage}
+        onComplete={() => {
+          reload();
+          setView({
+            kind: "project-detail",
+            projectId: view.projectId,
+            projectName: view.projectName,
+          });
+        }}
+        onBack={goHome}
       />
     );
   }
@@ -41,60 +63,14 @@ export default function Home() {
       <ProjectDetailView
         projectId={view.projectId}
         onBack={goHome}
-        onAnalyzePrompt={() =>
+        onStartChat={(roughIdea) =>
           setView({
-            kind: "prompt-session",
+            kind: "ideation-chat",
             projectId: view.projectId,
             projectName: view.projectName,
+            initialMessage: roughIdea,
           })
         }
-        onRunSetup={() =>
-          setView({
-            kind: "project-setup",
-            projectId: view.projectId,
-          })
-        }
-      />
-    );
-  }
-
-  if (view.kind === "prompt-session") {
-    return (
-      <PromptSessionFlow
-        projectId={view.projectId}
-        projectName={view.projectName}
-        onBack={() =>
-          setView({
-            kind: "project-detail",
-            projectId: view.projectId,
-            projectName: view.projectName,
-          })
-        }
-      />
-    );
-  }
-
-  if (view.kind === "project-setup") {
-    return (
-      <NewProjectFlow
-        existingProjectId={view.projectId}
-        onComplete={(projectId) => {
-          reload();
-          const proj = projects.find((p) => p.project_id === projectId);
-          setView({
-            kind: "project-detail",
-            projectId,
-            projectName: proj?.name ?? "Project",
-          });
-        }}
-        onCancel={() => {
-          const proj = projects.find((p) => p.project_id === view.projectId);
-          setView({
-            kind: "project-detail",
-            projectId: view.projectId,
-            projectName: proj?.name ?? "Project",
-          });
-        }}
       />
     );
   }
