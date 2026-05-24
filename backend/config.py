@@ -9,14 +9,7 @@ class Settings(BaseSettings):
     database_url: str
 
     anthropic_api_key: str
-    openai_api_key: str
     claude_model: str = "claude-sonnet-4-6"
-    claude_retrieval_model: str = "claude-haiku-4-5-20251001"
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
-
-    rag_top_k: int = 8
-    chunk_size: int = 512
 
 
 @lru_cache

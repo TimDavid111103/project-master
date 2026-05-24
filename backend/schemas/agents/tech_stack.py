@@ -16,7 +16,6 @@ class TechStack(BaseModel):
 
 class TechStackAgentInput(BaseModel):
     project_plan: ProjectPlan
-    retrieved_doc_contents: list[str]
 
 
 class TechStackAgentOutput(BaseModel):

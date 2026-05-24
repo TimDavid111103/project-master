@@ -1,12 +1,12 @@
-"""Tech stack agent: takes a project plan and retrieved technology docs, outputs MVP + full tech stack."""
+"""Tech stack agent: takes a project plan and outputs MVP + full tech stack."""
 import anthropic
 
 from backend.config import get_settings
 from backend.schemas.agents.tech_stack import TechStackAgentInput, TechStackAgentOutput
 
 _SYSTEM_PROMPT = """\
-You are a senior software architect. Given a project plan and relevant technology documentation, \
-recommend the best tech stack for this project.
+You are a senior software architect. Given a project plan, recommend the best tech stack \
+for this project.
 
 Produce two stacks:
 
@@ -22,7 +22,7 @@ For each technology provide:
   Payments, Storage, Monitoring
 - rationale: 1–2 sentences explaining why it fits this specific project
 
-Base your recommendations on the project plan and the retrieved documentation. \
+Base your recommendations solely on the project plan and your knowledge of the technology landscape. \
 Avoid recommending technologies not relevant to the project's domain.\
 """
 
@@ -34,19 +34,12 @@ async def run(
     settings = get_settings()
 
     plan = input_.project_plan
-    docs_section = (
-        "\n\n---\n\n".join(input_.retrieved_doc_contents)
-        if input_.retrieved_doc_contents
-        else "(no technology documentation retrieved)"
-    )
-
     user_content = (
         f"Project plan:\n"
         f"Vision: {plan.vision}\n"
         f"Target audience: {plan.target_audience}\n"
         f"Problem: {plan.problem_addressed}\n"
-        f"MVP scope: {plan.mvp_scope}\n\n"
-        f"Retrieved technology documentation:\n{docs_section}"
+        f"MVP scope: {plan.mvp_scope}"
     )
 
     response = await client.messages.create(

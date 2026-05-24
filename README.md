@@ -1,6 +1,6 @@
 # Project Master
 
-A tool for developers and founders turning raw ideas into structured project plans. You describe your idea in a short form, then have a short conversational chat with an AI that builds out your vision, target audience, problem statement, and MVP scope. Once the plan is confirmed, the system runs an agentic RAG pipeline against a corpus of technology documentation and produces two tech stacks — one optimised for an MVP, one for a full production system.
+A tool for developers and founders turning raw ideas into structured project plans. You describe your idea in a short form, then have a short conversational chat with an AI that builds out your vision, target audience, problem statement, and MVP scope. Once the plan is confirmed, the system generates two tech stacks — one optimised for an MVP, one for a full production system.
 
 The system is not a general-purpose chatbot. It is a focused two-stage pipeline — ideate, then analyse — designed specifically around translating rough ideas into actionable project and technology plans.
 
@@ -15,27 +15,22 @@ project-master/
 │   ├── agents/
 │   │   ├── base.py                   # Anthropic client factory and shared agent setup
 │   │   ├── ideation_agent.py         # Stage 1 — conversational ideation chat (vision, audience, problem, MVP scope)
-│   │   ├── retrieval_agent.py        # Stage 2a — agentic RAG (multi-query, query expansion, relevance checking)
-│   │   └── tech_stack_agent.py       # Stage 2b — generates MVP and full-product tech stacks from plan + docs
-│   │
-│   ├── rag/
-│   │   └── embedder.py               # OpenAI embeddings wrapper
+│   │   └── tech_stack_agent.py       # Stage 2 — generates MVP and full-product tech stacks from the project plan
 │   │
 │   ├── db/
-│   │   ├── models.py                 # SQLAlchemy models: Project and Document
+│   │   ├── models.py                 # SQLAlchemy model: Project
 │   │   └── engine.py                 # Async database engine and session factory
 │   │
 │   ├── schemas/
 │   │   ├── agents/
 │   │   │   ├── ideation.py           # ChatMessage, ProjectPlan, IdeationChatOutput
-│   │   │   ├── retrieval.py          # RetrievalAgentInput/Output, RetrievedDocResult
 │   │   │   └── tech_stack.py         # TechStackItem, TechStack, TechStackAgentInput/Output
 │   │   └── api/
 │   │       ├── pipeline.py           # Request and response types for pipeline endpoints
 │   │       └── projects.py           # Request and response types for the projects endpoint
 │   │
 │   ├── services/
-│   │   └── pipeline_service.py       # Orchestrates retrieval → tech stack → DB persistence
+│   │   └── pipeline_service.py       # Orchestrates tech stack generation → DB persistence
 │   │
 │   ├── api/v1/
 │   │   ├── router.py                 # v1 API router
@@ -66,19 +61,14 @@ project-master/
 │       ├── types.ts                  # Shared TypeScript types mirroring backend schemas
 │       └── utils.ts                  # Utility helpers
 │
-├── scripts/
-│   └── ingest.py                     # Chunks, embeds, and upserts corpus documents into the database
-│
 ├── alembic/versions/
-│   ├── 0001_initial.py               # Initial schema — documents table with pgvector HNSW index
-│   ├── 0002_v2_schema.py             # Adds project memory tables and hierarchical chunking columns
-│   ├── 0003_v3_schema.py             # Adds projects table with rough_idea and definition columns
-│   ├── 0004_v4_schema.py             # Adds project_plan_json and tech_stack_json; drops old analysis tables
-│   └── 0005_v5_simplify_documents.py # Drops metadata columns from documents (category, tags, hierarchy)
+│   ├── 0001_initial.py               # Initial schema
+│   ├── 0002_v2_schema.py             # Project memory tables
+│   ├── 0003_v3_schema.py             # Projects table with rough_idea and definition columns
+│   ├── 0004_v4_schema.py             # Adds project_plan_json and tech_stack_json
+│   └── 0005_v5_simplify_documents.py # Simplifies document columns
 │
-├── corpus/                           # Technology documentation files for RAG ingestion (.txt / .md)
-├── taxonomy.json                     # Tech category taxonomy (reference only, not used at runtime)
-├── docker-compose.yml                # Runs the pgvector database
+├── docker-compose.yml                # Runs the PostgreSQL database
 ├── Dockerfile                        # Backend container definition
 ├── main.py                           # Root entry point for running the backend server
 └── pyproject.toml                    # Python project config and dependencies
@@ -88,11 +78,11 @@ project-master/
 
 ## Backend
 
-The backend is a FastAPI application built around a two-stage pipeline. Stage one is a stateless conversational agent that builds a structured `ProjectPlan` from a freeform idea over 2–6 turns. Stage two runs when the plan is confirmed: a retrieval agent queries the vector database using the plan, and a tech stack agent combines the plan with the retrieved documentation to produce two tech stacks.
+The backend is a FastAPI application built around a two-stage pipeline. Stage one is a stateless conversational agent that builds a structured `ProjectPlan` from a freeform idea over 2–6 turns. Stage two runs when the plan is confirmed: a tech stack agent takes the plan and produces two tech stacks using its built-in knowledge of the technology landscape.
 
 All agents use Claude's tool use API with `tool_choice` set to force a specific tool on every call, guaranteeing that every LLM response is a validated Pydantic model — there is no free-text parsing anywhere in the pipeline.
 
-The pipeline service is the single place where retrieval and tech stack generation are wired together. It is the only layer that knows about the full analyse flow.
+The pipeline service is the single place where tech stack generation and DB persistence are wired together.
 
 ## Frontend
 
@@ -102,15 +92,8 @@ The frontend is a Next.js application. View state is managed in a single top-lev
 
 **Ideation agent** — conversational. Receives a `conversation_history` list on every turn (stateless). Builds out vision, target audience, problem addressed, and MVP scope by asking 1–2 focused questions at a time. Sets `is_complete: true` and emits a structured `ProjectPlan` once it has enough information (minimum 2 turns, maximum 5–6).
 
-**Retrieval agent** — agentic RAG loop (up to 5 iterations). Has four tools: `vector_search` (plain cosine similarity against pgvector), `expand_query` (Claude Haiku generates 2–3 query variants), `multi_query` (calls `vector_search` for each variant, deduplicates results), and `check_relevance` (records a reasoning step). Terminates by calling `output_retrieved_docs`.
-
-**Tech stack agent** — single call. Receives the `ProjectPlan` and the retrieved document contents, and returns two `TechStack` lists: one for an MVP (4–7 managed services, minimal ops overhead) and one for a full production system (8–12 items, independently scalable).
+**Tech stack agent** — single call. Receives the `ProjectPlan` and returns two `TechStack` lists: one for an MVP (4–7 managed services, minimal ops overhead) and one for a full production system (8–12 items, independently scalable). Recommendations are based on the project plan and the model's knowledge of the technology landscape.
 
 ## Schemas
 
 All data contracts are defined as Pydantic models before any logic is written. Agent inputs and outputs, API request and response bodies all have explicit types. The agent schemas serve a dual purpose: they define the tool input schemas that Claude receives, and they validate tool call arguments before any business logic runs.
-
-## RAG
-
-The corpus lives in `corpus/` as plain `.txt` or `.md` files. Run `python scripts/ingest.py` to chunk them by paragraph boundary, embed all chunks in a single OpenAI `text-embedding-3-small` call per file, and upsert them into the `documents` table. Existing rows for the same source file are deleted first. The retrieval agent then queries this table using pgvector cosine distance — no metadata filtering, no taxonomy, no hierarchy.
-

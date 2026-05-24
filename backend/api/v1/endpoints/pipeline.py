@@ -1,9 +1,9 @@
-"""Pipeline endpoints: ideation chat turn and full analysis (RAG + tech stack)."""
+"""Pipeline endpoints: ideation chat turn and full analysis (tech stack generation)."""
 from fastapi import APIRouter
 
 from backend.agents import ideation_agent
 from backend.agents.base import get_anthropic_client
-from backend.dependencies import DbDep, SettingsDep
+from backend.dependencies import DbDep
 from backend.schemas.api.pipeline import (
     PipelineAnalyzeRequest,
     PipelineAnalyzeResponse,
@@ -34,7 +34,6 @@ async def pipeline_chat(body: PipelineChatRequest) -> PipelineChatResponse:
 async def pipeline_analyze(
     body: PipelineAnalyzeRequest,
     db: DbDep,
-    settings: SettingsDep,
 ) -> PipelineAnalyzeResponse:
     client = get_anthropic_client()
     return await run_analyze_pipeline(
@@ -42,5 +41,4 @@ async def pipeline_analyze(
         project_plan=body.project_plan,
         client=client,
         db=db,
-        settings=settings,
     )
