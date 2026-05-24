@@ -39,6 +39,7 @@ async def pipeline_analyze(
     return await run_analyze_pipeline(
         project_id=body.project_id,
         project_plan=body.project_plan,
+        user_tech_stack=body.user_tech_stack,
         client=client,
         db=db,
     )

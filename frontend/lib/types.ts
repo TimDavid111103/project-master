@@ -43,6 +43,7 @@ export interface PipelineChatResponse {
 export interface PipelineAnalyzeRequest {
   project_id: string;
   project_plan: ProjectPlan;
+  user_tech_stack: string[];
 }
 
 export interface PipelineAnalyzeResponse {

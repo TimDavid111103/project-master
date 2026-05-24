@@ -18,6 +18,7 @@ class PipelineChatResponse(BaseModel):
 class PipelineAnalyzeRequest(BaseModel):
     project_id: str
     project_plan: ProjectPlan
+    user_tech_stack: list[str] = []
 
 
 class PipelineAnalyzeResponse(BaseModel):

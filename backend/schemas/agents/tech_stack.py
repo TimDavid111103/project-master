@@ -16,6 +16,7 @@ class TechStack(BaseModel):
 
 class TechStackAgentInput(BaseModel):
     project_plan: ProjectPlan
+    user_tech_stack: list[str] = []
 
 
 class TechStackAgentOutput(BaseModel):

@@ -22,8 +22,15 @@ For each technology provide:
   Payments, Storage, Monitoring
 - rationale: 1–2 sentences explaining why it fits this specific project
 
-Base your recommendations solely on the project plan and your knowledge of the technology landscape. \
-Avoid recommending technologies not relevant to the project's domain.\
+Base your recommendations on the project plan and your knowledge of the technology landscape. \
+Avoid recommending technologies not relevant to the project's domain.
+
+EXISTING TECH STACK PRIORITY RULE:
+When the user has provided their existing tech stack, you MUST treat it as a strong constraint. \
+Include every applicable technology from their existing stack in BOTH the mvp and full_product stacks. \
+Only omit an existing technology if it is fundamentally incompatible with this project type. \
+When their existing technology covers a category, do not replace it with an alternative — use it. \
+The rationale for included existing technologies should note that it is already in use by the team.\
 """
 
 
@@ -34,13 +41,22 @@ async def run(
     settings = get_settings()
 
     plan = input_.project_plan
-    user_content = (
+    user_content_parts = [
         f"Project plan:\n"
         f"Vision: {plan.vision}\n"
         f"Target audience: {plan.target_audience}\n"
         f"Problem: {plan.problem_addressed}\n"
-        f"MVP scope: {plan.mvp_scope}"
-    )
+        f"MVP scope: {plan.mvp_scope}",
+    ]
+
+    if input_.user_tech_stack:
+        stack_list = ", ".join(input_.user_tech_stack)
+        user_content_parts.append(
+            f"\nUser's existing tech stack (MUST be prioritised and included wherever applicable):\n"
+            f"{stack_list}"
+        )
+
+    user_content = "\n".join(user_content_parts)
 
     response = await client.messages.create(
         model=settings.claude_model,

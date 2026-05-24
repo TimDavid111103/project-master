@@ -15,12 +15,16 @@ from backend.schemas.api.pipeline import PipelineAnalyzeResponse
 async def run_analyze_pipeline(
     project_id: str,
     project_plan: ProjectPlan,
+    user_tech_stack: list[str],
     client: anthropic.AsyncAnthropic,
     db: AsyncSession,
 ) -> PipelineAnalyzeResponse:
     tech_stack_output = await tech_stack_agent.run(
         client,
-        TechStackAgentInput(project_plan=project_plan),
+        TechStackAgentInput(
+            project_plan=project_plan,
+            user_tech_stack=user_tech_stack,
+        ),
     )
 
     pid = uuid.UUID(project_id)

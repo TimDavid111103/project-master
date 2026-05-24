@@ -73,9 +73,13 @@ export function useIdeationChat(projectId: string) {
     messages: ChatMessage[]
   ): Promise<void> {
     try {
+      const stored = localStorage.getItem("project_master_user_tech_stack");
+      const userTechStack: string[] = stored ? (JSON.parse(stored) as string[]) : [];
+
       const result = await api.pipelineAnalyze({
         project_id: projectId,
         project_plan: projectPlan,
+        user_tech_stack: userTechStack,
       });
       setState((s) => ({
         ...s,

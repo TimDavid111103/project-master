@@ -5,11 +5,13 @@ import { HomeView } from "@/components/HomeView";
 import { NewProjectFlow } from "@/components/NewProjectFlow";
 import { IdeationChatFlow } from "@/components/IdeationChatFlow";
 import { ProjectDetailView } from "@/components/ProjectDetailView";
+import { SettingsView } from "@/components/SettingsView";
 import { useProjects } from "@/hooks/useProjects";
 import type { ProjectListItem } from "@/lib/types";
 
 type AppView =
   | { kind: "home" }
+  | { kind: "settings" }
   | { kind: "new-project" }
   | { kind: "ideation-chat"; projectId: string; projectName: string; initialMessage: string }
   | { kind: "project-detail"; projectId: string; projectName: string };
@@ -21,6 +23,10 @@ export default function Home() {
   function goHome() {
     reload();
     setView({ kind: "home" });
+  }
+
+  if (view.kind === "settings") {
+    return <SettingsView onClose={() => setView({ kind: "home" })} />;
   }
 
   if (view.kind === "new-project") {
@@ -88,6 +94,7 @@ export default function Home() {
           projectName: project.name,
         })
       }
+      onOpenSettings={() => setView({ kind: "settings" })}
     />
   );
 }
